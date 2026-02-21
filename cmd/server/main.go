@@ -62,6 +62,8 @@ func main() {
 	questionRepo := repository.NewQuestionRepository(pool)
 	sessionRepo := repository.NewExamSessionRepository(pool)
 	targetRepo := repository.NewExamTargetRuleRepository(pool)
+	settingRepo := repository.NewSettingRepository(pool)
+	subjectRepo := repository.NewSubjectRepository(pool)
 
 	// ─── Initialize Services ──────────────────────────────────────────
 	authService := service.NewAuthService(cfg, rdb)
@@ -74,6 +76,8 @@ func main() {
 	adminUserService := service.NewAdminUserService(pool)
 	adminRoleService := service.NewAdminRoleService(roleRepo)
 	classService := service.NewClassService(classRepo)
+	settingService := service.NewSettingService(settingRepo, log)
+	subjectService := service.NewSubjectService(subjectRepo, log)
 
 	// ─── Initialize Handlers ──────────────────────────────────────────
 	handlers := &router.Handlers{
@@ -88,6 +92,8 @@ func main() {
 		AdminUser:     handler.NewAdminUserHandler(adminUserService),
 		AdminRole:     handler.NewAdminRoleHandler(adminRoleService),
 		Class:         handler.NewClassHandler(classService),
+		Setting:       handler.NewSettingHandler(settingService),
+		Subject:       handler.NewSubjectHandler(subjectService),
 	}
 
 	// ─── Start Background Workers ─────────────────────────────────────

@@ -36,6 +36,18 @@ const (
 
 	// PermissionRolesWrite allows creating, updating, and deleting admin roles.
 	PermissionRolesWrite Permission = "roles:write"
+
+	// PermissionSettingsRead allows viewing application settings.
+	PermissionSettingsRead Permission = "settings:read"
+
+	// PermissionSettingsWrite allows editing application settings.
+	PermissionSettingsWrite Permission = "settings:write"
+
+	// PermissionSubjectsRead allows viewing subjects.
+	PermissionSubjectsRead Permission = "subjects:read"
+
+	// PermissionSubjectsWrite allows creating, editing, and deleting subjects.
+	PermissionSubjectsWrite Permission = "subjects:write"
 )
 
 // AllPermissions is a slice of all available permissions.
@@ -51,4 +63,8 @@ var AllPermissions = []Permission{
 	PermissionAdminsWrite,
 	PermissionRolesRead,
 	PermissionRolesWrite,
+	PermissionSettingsRead,
+	PermissionSettingsWrite,
+	PermissionSubjectsRead,
+	PermissionSubjectsWrite,
 }

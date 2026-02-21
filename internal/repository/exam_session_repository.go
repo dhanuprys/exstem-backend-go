@@ -2,10 +2,10 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stemsi/exstem-backend/internal/model"
 )
@@ -92,8 +92,8 @@ func (r *ExamSessionRepository) ListByStudent(ctx context.Context, studentID int
 	return sessions, rows.Err()
 }
 
-// ListByExam retrieves all student results for a specific exam, with optional class filter and pagination.
-func (r *ExamSessionRepository) ListByExam(ctx context.Context, examID uuid.UUID, page, perPage int, classID *int) ([]ExamResult, int64, error) {
+// ListByExam retrieves all student results for a specific exam, with optional filters and pagination.
+func (r *ExamSessionRepository) ListByExam(ctx context.Context, examID uuid.UUID, page, perPage int, classID *int, gradeLevel *string, majorCode *string, groupNumber *int, religion *string) ([]ExamResult, int64, error) {
 	offset := (page - 1) * perPage
 
 	// Base query parts
@@ -101,19 +101,37 @@ func (r *ExamSessionRepository) ListByExam(ctx context.Context, examID uuid.UUID
 		FROM exam_sessions es
 		JOIN students s ON es.student_id = s.id
 		JOIN classes c ON s.class_id = c.id
-		WHERE es.exam_id = @examID
+		WHERE es.exam_id = $1
 	`
-	args := pgx.NamedArgs{"examID": examID}
+	args := []any{examID}
 
 	// Apply class filter if provided
 	if classID != nil {
-		baseQuery += " AND s.class_id = @classID"
-		args["classID"] = *classID
+		args = append(args, *classID)
+		baseQuery += fmt.Sprintf(" AND s.class_id = $%d", len(args))
+	}
+
+	// Apply optional filters
+	if gradeLevel != nil && *gradeLevel != "" {
+		args = append(args, *gradeLevel)
+		baseQuery += fmt.Sprintf(" AND c.grade_level = $%d", len(args))
+	}
+	if majorCode != nil && *majorCode != "" {
+		args = append(args, *majorCode)
+		baseQuery += fmt.Sprintf(" AND c.major_code = $%d", len(args))
+	}
+	if groupNumber != nil {
+		args = append(args, *groupNumber)
+		baseQuery += fmt.Sprintf(" AND c.group_number = $%d", len(args))
+	}
+	if religion != nil && *religion != "" {
+		args = append(args, *religion)
+		baseQuery += fmt.Sprintf(" AND s.religion = $%d", len(args))
 	}
 
 	// Count total rows
 	var total int64
-	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) "+baseQuery, args).Scan(&total)
+	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) "+baseQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -121,16 +139,15 @@ func (r *ExamSessionRepository) ListByExam(ctx context.Context, examID uuid.UUID
 	// Fetch paginated rows
 	query := `
 		SELECT 
-			s.id, s.name, s.nisn, c.name,
+			s.id, s.name, s.nisn, CONCAT(c.grade_level, ' ', c.major_code, ' ', c.group_number) as class_name,
 			es.final_score, es.status, es.started_at, es.finished_at
 		` + baseQuery + `
-		ORDER BY c.name ASC, s.name ASC
-		LIMIT @limit OFFSET @offset
+		ORDER BY class_name ASC, s.name ASC
+		LIMIT $` + fmt.Sprintf("%d", len(args)+1) + ` OFFSET $` + fmt.Sprintf("%d", len(args)+2) + `
 	`
-	args["limit"] = perPage
-	args["offset"] = offset
+	args = append(args, perPage, offset)
 
-	rows, err := r.pool.Query(ctx, query, args)
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
 	}

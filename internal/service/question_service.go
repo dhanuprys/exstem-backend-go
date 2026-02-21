@@ -27,3 +27,11 @@ func (s *QuestionService) ListByExam(ctx context.Context, examID uuid.UUID) ([]m
 func (s *QuestionService) Create(ctx context.Context, question *model.Question) error {
 	return s.questionRepo.Create(ctx, question)
 }
+
+// ReplaceAll replaces all questions for an exam.
+func (s *QuestionService) ReplaceAll(ctx context.Context, examID uuid.UUID, questions []model.Question) error {
+	for i := range questions {
+		questions[i].ExamID = examID
+	}
+	return s.questionRepo.ReplaceAll(ctx, examID, questions)
+}

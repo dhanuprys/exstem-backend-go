@@ -20,5 +20,9 @@ INSERT INTO permissions (code, description) VALUES
     ('roles:read', 'View admin roles'),
     ('roles:write', 'Create, edit, and delete admin roles'),
     ('admins:read', 'View admin users'),
-    ('admins:write', 'Create, edit, and delete admin users')
+    ('admins:write', 'Create, edit, and delete admin users'),
+    ('settings:read', 'View application settings'),
+    ('settings:write', 'Edit application settings'),
+    ('subjects:read', 'View subjects'),
+    ('subjects:write', 'Create, edit, and delete subjects')
 ON CONFLICT (code) DO NOTHING;

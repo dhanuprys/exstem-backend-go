@@ -50,3 +50,32 @@ func (r *QuestionRepository) Create(ctx context.Context, q *model.Question) erro
 		q.ExamID, q.QuestionText, q.QuestionType, q.Options, q.CorrectOption, q.OrderNum, q.ScoreValue,
 	).Scan(&q.ID)
 }
+
+// ReplaceAll replaces all questions for an exam in a single transaction.
+func (r *QuestionRepository) ReplaceAll(ctx context.Context, examID uuid.UUID, questions []model.Question) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Step 1: Delete all existing questions for this exam
+	if _, err := tx.Exec(ctx, `DELETE FROM questions WHERE exam_id = $1`, examID); err != nil {
+		return err
+	}
+
+	// Step 2: Insert the new questions
+	for _, q := range questions {
+		err := tx.QueryRow(ctx,
+			`INSERT INTO questions (exam_id, question_text, question_type, options, correct_option, order_num, score_value)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 RETURNING id`,
+			examID, q.QuestionText, q.QuestionType, q.Options, q.CorrectOption, q.OrderNum, q.ScoreValue,
+		).Scan(&q.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}

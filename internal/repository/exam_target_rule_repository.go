@@ -21,7 +21,7 @@ func NewExamTargetRuleRepository(pool *pgxpool.Pool) *ExamTargetRuleRepository {
 // ListByExam retrieves all target rules for a given exam.
 func (r *ExamTargetRuleRepository) ListByExam(ctx context.Context, examID uuid.UUID) ([]model.ExamTargetRule, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, exam_id, target_type, target_value
+		`SELECT id, exam_id, class_id, grade_level, major_code, religion
 		 FROM exam_target_rules
 		 WHERE exam_id = $1`, examID,
 	)
@@ -33,7 +33,7 @@ func (r *ExamTargetRuleRepository) ListByExam(ctx context.Context, examID uuid.U
 	var rules []model.ExamTargetRule
 	for rows.Next() {
 		var rule model.ExamTargetRule
-		if err := rows.Scan(&rule.ID, &rule.ExamID, &rule.TargetType, &rule.TargetValue); err != nil {
+		if err := rows.Scan(&rule.ID, &rule.ExamID, &rule.ClassID, &rule.GradeLevel, &rule.MajorCode, &rule.Religion); err != nil {
 			return nil, err
 		}
 		rules = append(rules, rule)
@@ -44,24 +44,27 @@ func (r *ExamTargetRuleRepository) ListByExam(ctx context.Context, examID uuid.U
 // Create inserts a new target rule.
 func (r *ExamTargetRuleRepository) Create(ctx context.Context, rule *model.ExamTargetRule) error {
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO exam_target_rules (exam_id, target_type, target_value)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO exam_target_rules (exam_id, class_id, grade_level, major_code, religion)
+		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id`,
-		rule.ExamID, rule.TargetType, rule.TargetValue,
+		rule.ExamID, rule.ClassID, rule.GradeLevel, rule.MajorCode, rule.Religion,
 	).Scan(&rule.ID)
 }
 
-// FindExamsForStudent retrieves exam IDs that target a student's class/grade/major.
-// This query joins through classes to match all target types.
+// FindExamsForStudent retrieves exam IDs that target a student's class/grade/major/religion.
 func (r *ExamTargetRuleRepository) FindExamsForStudent(ctx context.Context, classID int) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT DISTINCT etr.exam_id
 		 FROM exam_target_rules etr
 		 JOIN classes c ON c.id = $1
+		 JOIN students s ON s.class_id = c.id
 		 WHERE
-		   (etr.target_type = 'CLASS' AND etr.target_value = CAST(c.id AS VARCHAR))
-		   OR (etr.target_type = 'GRADE' AND etr.target_value = CAST(c.grade_level AS VARCHAR))
-		   OR (etr.target_type = 'MAJOR' AND etr.target_value = c.major_code)`,
+		   etr.class_id = c.id
+		   OR (
+			   (etr.grade_level IS NULL OR etr.grade_level = CAST(c.grade_level AS VARCHAR))
+			   AND (etr.major_code IS NULL OR etr.major_code = c.major_code)
+			   AND (etr.religion IS NULL OR etr.religion = s.religion)
+		   )`,
 		classID,
 	)
 	if err != nil {

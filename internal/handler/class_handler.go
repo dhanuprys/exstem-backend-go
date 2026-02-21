@@ -38,7 +38,7 @@ func (h *ClassHandler) ListClasses(c *gin.Context) {
 
 // CreateClassRequest is the payload for creating or updating a class.
 type CreateClassRequest struct {
-	GradeLevel  int    `json:"grade_level" binding:"required,min=1"`
+	GradeLevel  string `json:"grade_level" binding:"required,min=1,max=10"`
 	MajorCode   string `json:"major_code" binding:"required,min=1,max=10"`
 	GroupNumber int    `json:"group_number" binding:"required,min=1"`
 }

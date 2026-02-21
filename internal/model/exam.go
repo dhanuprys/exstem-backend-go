@@ -23,6 +23,8 @@ type Exam struct {
 	ID              uuid.UUID  `json:"id"`
 	Title           string     `json:"title"`
 	AuthorID        int        `json:"author_id"`
+	SubjectID       *int       `json:"subject_id,omitempty"`
+	SubjectName     string     `json:"subject_name,omitempty"`
 	ScheduledStart  *time.Time `json:"scheduled_start,omitempty"`
 	ScheduledEnd    *time.Time `json:"scheduled_end,omitempty"`
 	DurationMinutes int        `json:"duration_minutes"`
@@ -35,6 +37,7 @@ type Exam struct {
 // CreateExamRequest is the payload for creating a new exam.
 type CreateExamRequest struct {
 	Title           string     `json:"title" binding:"required,min=3,max=255"`
+	SubjectID       *int       `json:"subject_id" binding:"omitempty"`
 	ScheduledStart  *time.Time `json:"scheduled_start" binding:"omitempty"`
 	ScheduledEnd    *time.Time `json:"scheduled_end" binding:"omitempty,gtfield=ScheduledStart"`
 	DurationMinutes int        `json:"duration_minutes" binding:"required,min=1,max=480"`
@@ -55,4 +58,14 @@ type QuestionForStudent struct {
 	QuestionText string          `json:"question_text"`
 	Options      json.RawMessage `json:"options"`
 	OrderNum     int             `json:"order_num"`
+}
+
+// UpdateExamRequest is the payload for updating an existing exam.
+type UpdateExamRequest struct {
+	Title           string     `json:"title" binding:"omitempty,min=3,max=255"`
+	SubjectID       *int       `json:"subject_id" binding:"omitempty"`
+	ScheduledStart  *time.Time `json:"scheduled_start" binding:"omitempty"`
+	ScheduledEnd    *time.Time `json:"scheduled_end" binding:"omitempty,gtfield=ScheduledStart"`
+	DurationMinutes int        `json:"duration_minutes" binding:"omitempty,min=1,max=480"`
+	EntryToken      string     `json:"entry_token" binding:"omitempty,min=4,max=20"`
 }

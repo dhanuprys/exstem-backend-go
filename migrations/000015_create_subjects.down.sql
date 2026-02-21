@@ -1,0 +1,2 @@
+ALTER TABLE exams DROP COLUMN IF EXISTS subject_id;
+DROP TABLE IF EXISTS subjects;

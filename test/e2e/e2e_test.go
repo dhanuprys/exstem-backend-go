@@ -111,7 +111,7 @@ func setupInitialAdmin() error {
 	}
 
 	// Create sample class if not exists (Class 1) or get ID
-	err = conn.QueryRow(ctx, `INSERT INTO classes (grade_level, major_code, group_number) VALUES (10, 'RPL', 1) 
+	err = conn.QueryRow(ctx, `INSERT INTO classes (grade_level, major_code, group_number) VALUES ('X', 'RPL', 1) 
 		ON CONFLICT (grade_level, major_code, group_number) DO UPDATE SET grade_level=EXCLUDED.grade_level 
 		RETURNING id`).Scan(&initialClassID)
 	if err != nil {

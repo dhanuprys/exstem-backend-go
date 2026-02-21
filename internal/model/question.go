@@ -34,3 +34,8 @@ type AddQuestionRequest struct {
 	OrderNum      int             `json:"order_num" binding:"min=0"`
 	ScoreValue    int             `json:"score_value" binding:"required,min=1"`
 }
+
+// ReplaceQuestionsRequest is the payload for bulk replacing questions.
+type ReplaceQuestionsRequest struct {
+	Questions []AddQuestionRequest `json:"questions" binding:"dive"`
+}

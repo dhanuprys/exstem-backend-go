@@ -14,6 +14,14 @@ import (
 	"github.com/stemsi/exstem-backend/internal/response"
 )
 
+// Domain Errors
+var (
+	ErrNotExamAuthor    = errors.New("not the author of this exam")
+	ErrNoQuestions      = errors.New("exam has no questions, cannot publish/start")
+	ErrExamNotDraft     = errors.New("exam status is not DRAFT")
+	ErrExamNotPublished = errors.New("exam status is not PUBLISHED")
+)
+
 // ExamService handles exam business logic and Redis caching.
 type ExamService struct {
 	examRepo     *repository.ExamRepository
@@ -124,11 +132,11 @@ func (s *ExamService) RefreshCache(ctx context.Context, examID uuid.UUID, author
 		return fmt.Errorf("get exam: %w", err)
 	}
 
-	if exam.AuthorID != authorID {
-		return errors.New("not the author of this exam")
+	if authorID != 0 && exam.AuthorID != authorID {
+		return ErrNotExamAuthor
 	}
 	if exam.Status != model.ExamStatusPublished {
-		return fmt.Errorf("exam status is %s, expected PUBLISHED", exam.Status)
+		return ErrExamNotPublished
 	}
 
 	if err := s.WarmExamCache(ctx, exam); err != nil {
@@ -147,7 +155,7 @@ func (s *ExamService) WarmExamCache(ctx context.Context, exam *model.Exam) error
 		return fmt.Errorf("list questions: %w", err)
 	}
 	if len(questions) == 0 {
-		return errors.New("cannot cache exam with no questions")
+		return ErrNoQuestions
 	}
 
 	// Build student-facing payload (without correct answers).
@@ -269,4 +277,34 @@ func (s *ExamService) AddTargetRule(ctx context.Context, rule *model.ExamTargetR
 // GetTargetRules retrieves target rules for an exam.
 func (s *ExamService) GetTargetRules(ctx context.Context, examID uuid.UUID) ([]model.ExamTargetRule, error) {
 	return s.targetRepo.ListByExam(ctx, examID)
+}
+
+// Update modifies an existing draft exam.
+func (s *ExamService) Update(ctx context.Context, authorID int, exam *model.Exam) error {
+	existing, err := s.examRepo.GetByID(ctx, exam.ID)
+	if err != nil {
+		return err
+	}
+	if authorID != 0 && existing.AuthorID != authorID {
+		return ErrNotExamAuthor
+	}
+	if existing.Status != model.ExamStatusDraft {
+		return ErrExamNotDraft
+	}
+	return s.examRepo.Update(ctx, exam)
+}
+
+// Delete removes a draft exam.
+func (s *ExamService) Delete(ctx context.Context, id uuid.UUID, authorID int) error {
+	existing, err := s.examRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if authorID != 0 && existing.AuthorID != authorID {
+		return ErrNotExamAuthor
+	}
+	if existing.Status != model.ExamStatusDraft {
+		return ErrExamNotDraft
+	}
+	return s.examRepo.Delete(ctx, id)
 }

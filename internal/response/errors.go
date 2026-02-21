@@ -35,6 +35,7 @@ const (
 	ErrExamNotPublished  ErrCode = "EXAM_NOT_PUBLISHED"
 	ErrNotExamAuthor     ErrCode = "NOT_EXAM_AUTHOR"
 	ErrNoQuestions       ErrCode = "NO_QUESTIONS"
+	ErrExamNotDraft      ErrCode = "EXAM_NOT_DRAFT"
 
 	// ─── Media ─────────────────────────────────────────────────────────
 	ErrFileRequired    ErrCode = "FILE_REQUIRED"
@@ -104,6 +105,8 @@ func GetMessage(code ErrCode) string {
 		return "Anda bukan pembuat ujian ini."
 	case ErrNoQuestions:
 		return "Ujian ini tidak memiliki pertanyaan."
+	case ErrExamNotDraft:
+		return "Ujian ini tidak dalam status DRAFT."
 
 	// ─── Media ─────────────────────────────────────────────────────────
 	case ErrFileRequired:

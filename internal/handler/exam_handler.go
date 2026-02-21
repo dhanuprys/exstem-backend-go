@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -27,6 +30,14 @@ func NewExamHandler(examService *service.ExamService, sessionService *service.Ex
 		examService:    examService,
 		sessionService: sessionService,
 	}
+}
+
+func generateToken() string {
+	bytes := make([]byte, 3) // 6 hex characters
+	if _, err := rand.Read(bytes); err != nil {
+		return "EXAM00"
+	}
+	return strings.ToUpper(hex.EncodeToString(bytes))
 }
 
 // ListExams godoc
@@ -82,7 +93,7 @@ func (h *ExamHandler) CreateExam(c *gin.Context) {
 		ScheduledStart:  req.ScheduledStart,
 		ScheduledEnd:    req.ScheduledEnd,
 		DurationMinutes: req.DurationMinutes,
-		EntryToken:      req.EntryToken,
+		EntryToken:      generateToken(),
 	}
 
 	if err := h.examService.Create(c.Request.Context(), exam); err != nil {
@@ -103,20 +114,27 @@ func (h *ExamHandler) PublishExam(c *gin.Context) {
 		return
 	}
 
-	examID, err := uuid.Parse(c.Param("exam_id"))
+	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
 		return
 	}
 
-	if err := h.examService.Publish(c.Request.Context(), examID, claims.UserID); err != nil {
-		errMsg := err.Error()
+	authorFilter := claims.UserID
+	for _, p := range claims.Permissions {
+		if p == "exams:write_all" {
+			authorFilter = 0
+			break
+		}
+	}
+
+	if err := h.examService.Publish(c.Request.Context(), examID, authorFilter); err != nil {
 		switch {
-		case strings.Contains(errMsg, "not the author"):
+		case errors.Is(err, service.ErrNotExamAuthor):
 			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
-		case strings.Contains(errMsg, "no questions"):
+		case errors.Is(err, service.ErrNoQuestions):
 			response.Fail(c, http.StatusBadRequest, response.ErrNoQuestions)
-		case strings.Contains(errMsg, "expected DRAFT"):
+		case errors.Is(err, service.ErrExamNotDraft):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotAvailable)
 		default:
 			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
@@ -131,7 +149,7 @@ func (h *ExamHandler) PublishExam(c *gin.Context) {
 // POST /api/v1/admin/exams/:exam_id/target-rules
 // Adds a target rule determining which students can see the exam.
 func (h *ExamHandler) AddTargetRule(c *gin.Context) {
-	examID, err := uuid.Parse(c.Param("exam_id"))
+	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
 		return
@@ -144,9 +162,11 @@ func (h *ExamHandler) AddTargetRule(c *gin.Context) {
 	}
 
 	rule := &model.ExamTargetRule{
-		ExamID:      examID,
-		TargetType:  model.TargetType(req.TargetType),
-		TargetValue: req.TargetValue,
+		ExamID:     examID,
+		ClassID:    req.ClassID,
+		GradeLevel: req.GradeLevel,
+		MajorCode:  req.MajorCode,
+		Religion:   req.Religion,
 	}
 
 	if err := h.examService.AddTargetRule(c.Request.Context(), rule); err != nil {
@@ -155,6 +175,29 @@ func (h *ExamHandler) AddTargetRule(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, gin.H{"target_rule": rule})
+}
+
+// GetTargetRules godoc
+// GET /api/v1/admin/exams/:id/target-rules
+// Retrieves target rules for an exam.
+func (h *ExamHandler) GetTargetRules(c *gin.Context) {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	rules, err := h.examService.GetTargetRules(c.Request.Context(), examID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	if rules == nil {
+		rules = []model.ExamTargetRule{}
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"target_rules": rules})
 }
 
 // RefreshExamCache godoc
@@ -167,20 +210,27 @@ func (h *ExamHandler) RefreshExamCache(c *gin.Context) {
 		return
 	}
 
-	examID, err := uuid.Parse(c.Param("exam_id"))
+	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
 		return
 	}
 
-	if err := h.examService.RefreshCache(c.Request.Context(), examID, claims.UserID); err != nil {
-		errMsg := err.Error()
+	authorFilter := claims.UserID
+	for _, p := range claims.Permissions {
+		if p == "exams:write_all" {
+			authorFilter = 0
+			break
+		}
+	}
+
+	if err := h.examService.RefreshCache(c.Request.Context(), examID, authorFilter); err != nil {
 		switch {
-		case strings.Contains(errMsg, "not the author"):
+		case errors.Is(err, service.ErrNotExamAuthor):
 			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
-		case strings.Contains(errMsg, "expected PUBLISHED"):
+		case errors.Is(err, service.ErrExamNotPublished):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotPublished)
-		case strings.Contains(errMsg, "no questions"):
+		case errors.Is(err, service.ErrNoQuestions):
 			response.Fail(c, http.StatusBadRequest, response.ErrNoQuestions)
 		default:
 			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
@@ -201,7 +251,7 @@ func (h *ExamHandler) GetExamResults(c *gin.Context) {
 		return
 	}
 
-	examID, err := uuid.Parse(c.Param("exam_id"))
+	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
 		return
@@ -220,17 +270,34 @@ func (h *ExamHandler) GetExamResults(c *gin.Context) {
 		classID = &cid
 	}
 
-	// Verify the admin has permission to view this exam (author check or superadmin)
-	// For now, consistent with other endpoints, we rely on service layer or implied permission.
-	// But let's check basic ownership if not superadmin?
-	// The requirement doesn't strictly specify role checks here beyond basic admin token,
-	// but let's stick to the pattern: service usually handles deep logic, handler handles params.
-	// Given previous patterns (ListExams), we might want to ensure they can see it.
-	// However, GetExamResults is likely for any admin who can manage exams.
+	var gradeLevel *string
+	if glStr := c.Query("grade_level"); glStr != "" {
+		gradeLevel = &glStr
+	}
 
-	results, total, err := h.sessionService.GetExamResults(c.Request.Context(), examID, page, perPage, classID)
+	var majorCode *string
+	if mcStr := c.Query("major_code"); mcStr != "" {
+		majorCode = &mcStr
+	}
+
+	var groupNumber *int
+	if gnStr := c.Query("group_number"); gnStr != "" {
+		gn, err := strconv.Atoi(gnStr)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, response.ErrValidation)
+			return
+		}
+		groupNumber = &gn
+	}
+
+	var religion *string
+	if relStr := c.Query("religion"); relStr != "" {
+		religion = &relStr
+	}
+
+	results, total, err := h.sessionService.GetExamResults(c.Request.Context(), examID, page, perPage, classID, gradeLevel, majorCode, groupNumber, religion)
 	if err != nil {
-		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		response.FailWithFields(c, http.StatusInternalServerError, response.ErrInternal, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -242,4 +309,134 @@ func (h *ExamHandler) GetExamResults(c *gin.Context) {
 	}
 
 	response.SuccessWithPagination(c, http.StatusOK, gin.H{"results": results}, pagination)
+}
+
+// GetExam godoc
+// GET /api/v1/admin/exams/:id
+// Retrieves a single exam by ID.
+func (h *ExamHandler) GetExam(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	exam, err := h.examService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, response.ErrInvalidID) // Or a specific NotFound error
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"exam": exam})
+}
+
+// UpdateExam godoc
+// PUT /api/v1/admin/exams/:id
+// Updates an existing draft exam.
+func (h *ExamHandler) UpdateExam(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, response.ErrTokenRequired)
+		return
+	}
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	var req model.UpdateExamRequest
+	if fields := validator.Bind(c, &req); fields != nil {
+		response.FailWithFields(c, http.StatusBadRequest, response.ErrValidation, fields)
+		return
+	}
+
+	// Fetch existing to overlay changes (or service can handle it, but handler doing it is fine for partial updates)
+	existing, err := h.examService.GetByID(c.Request.Context(), id)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, response.ErrInvalidID)
+		return
+	}
+
+	if req.Title != "" {
+		existing.Title = req.Title
+	}
+	if req.SubjectID != nil {
+		if *req.SubjectID == 0 {
+			existing.SubjectID = nil
+		} else {
+			existing.SubjectID = req.SubjectID
+		}
+	}
+	if req.ScheduledStart != nil {
+		existing.ScheduledStart = req.ScheduledStart
+	}
+	if req.ScheduledEnd != nil {
+		existing.ScheduledEnd = req.ScheduledEnd
+	}
+	if req.DurationMinutes > 0 {
+		existing.DurationMinutes = req.DurationMinutes
+	}
+
+	authorFilter := claims.UserID
+	for _, p := range claims.Permissions {
+		if p == "exams:write_all" {
+			authorFilter = 0
+			break
+		}
+	}
+
+	if err := h.examService.Update(c.Request.Context(), authorFilter, existing); err != nil {
+		switch {
+		case errors.Is(err, service.ErrNotExamAuthor):
+			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
+		case errors.Is(err, service.ErrExamNotDraft):
+			response.Fail(c, http.StatusBadRequest, response.ErrExamNotDraft)
+		default:
+			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"exam": existing})
+}
+
+// DeleteExam godoc
+// DELETE /api/v1/admin/exams/:id
+// Deletes a draft exam.
+func (h *ExamHandler) DeleteExam(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, response.ErrTokenRequired)
+		return
+	}
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	authorFilter := claims.UserID
+	for _, p := range claims.Permissions {
+		if p == "exams:write_all" {
+			authorFilter = 0
+			break
+		}
+	}
+
+	if err := h.examService.Delete(c.Request.Context(), id, authorFilter); err != nil {
+		switch {
+		case errors.Is(err, service.ErrNotExamAuthor):
+			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
+		case errors.Is(err, service.ErrExamNotDraft):
+			response.Fail(c, http.StatusBadRequest, response.ErrExamNotDraft)
+		default:
+			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "exam deleted"})
 }

@@ -156,7 +156,7 @@ func (s *ExamSessionService) VerifyActiveSession(ctx context.Context, examID uui
 	return nil
 }
 
-// GetExamResults retrieves paginated exam results with optional class filter.
-func (s *ExamSessionService) GetExamResults(ctx context.Context, examID uuid.UUID, page, perPage int, classID *int) ([]repository.ExamResult, int64, error) {
-	return s.sessionRepo.ListByExam(ctx, examID, page, perPage, classID)
+// GetExamResults retrieves paginated exam results with optional filters.
+func (s *ExamSessionService) GetExamResults(ctx context.Context, examID uuid.UUID, page, perPage int, classID *int, gradeLevel *string, majorCode *string, groupNumber *int, religion *string) ([]repository.ExamResult, int64, error) {
+	return s.sessionRepo.ListByExam(ctx, examID, page, perPage, classID, gradeLevel, majorCode, groupNumber, religion)
 }

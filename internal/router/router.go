@@ -27,6 +27,8 @@ type Handlers struct {
 	AdminUser     *handler.AdminUserHandler
 	AdminRole     *handler.AdminRoleHandler
 	Class         *handler.ClassHandler
+	Setting       *handler.SettingHandler
+	Subject       *handler.SubjectHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -63,6 +65,12 @@ func SetupRouter(
 	router.GET("/health", func(c *gin.Context) {
 		response.Success(c, http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// ─── 0. Public Group (No Auth) ─────────────────────────────────────
+	publicAPI := router.Group("/api/v1/public")
+	{
+		publicAPI.GET("/settings", handlers.Setting.GetPublicSettings)
+	}
 
 	// Rate limiter for auth routes (30 requests per minute per IP).
 	authLimiter := middleware.NewRateLimiter(30, time.Minute)
@@ -202,7 +210,7 @@ func SetupRouter(
 			middleware.RequirePermission(string(model.PermissionExamsRead)),
 			handlers.Exam.ListExams,
 		)
-		adminAPI.GET("/exams/:exam_id/results",
+		adminAPI.GET("/exams/:id/results",
 			middleware.RequirePermission(string(model.PermissionExamsRead)),
 			handlers.Exam.GetExamResults,
 		)
@@ -210,28 +218,64 @@ func SetupRouter(
 			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
 			handlers.Exam.CreateExam,
 		)
-		adminAPI.POST("/exams/:exam_id/publish",
+		adminAPI.GET("/exams/:id",
+			middleware.RequirePermission(string(model.PermissionExamsRead)),
+			handlers.Exam.GetExam,
+		)
+		adminAPI.PUT("/exams/:id",
+			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			handlers.Exam.UpdateExam,
+		)
+		adminAPI.DELETE("/exams/:id",
+			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			handlers.Exam.DeleteExam,
+		)
+		adminAPI.POST("/exams/:id/publish",
 			middleware.RequirePermission(string(model.PermissionExamsPublish)),
 			handlers.Exam.PublishExam,
 		)
-		adminAPI.POST("/exams/:exam_id/target-rules",
+		adminAPI.GET("/exams/:id/target-rules",
+			middleware.RequirePermission(string(model.PermissionExamsRead)),
+			handlers.Exam.GetTargetRules,
+		)
+		adminAPI.POST("/exams/:id/target-rules",
 			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
 			handlers.Exam.AddTargetRule,
 		)
-		adminAPI.POST("/exams/:exam_id/refresh-cache",
+		adminAPI.POST("/exams/:id/refresh-cache",
 			middleware.RequirePermission(string(model.PermissionExamsPublish)),
 			handlers.Exam.RefreshExamCache,
 		)
 
 		// Question management
-		adminAPI.GET("/exams/:exam_id/questions",
+		adminAPI.GET("/exams/:id/questions",
 			middleware.RequirePermission(string(model.PermissionExamsRead)),
 			handlers.Question.ListQuestions,
 		)
-		adminAPI.POST("/exams/:exam_id/questions",
+		adminAPI.POST("/exams/:id/questions",
 			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
 			handlers.Question.AddQuestion,
 		)
+		adminAPI.PUT("/exams/:id/questions",
+			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			handlers.Question.ReplaceQuestions,
+		)
+
+		// App Settings Routes
+		settingsGroup := adminAPI.Group("/settings")
+		{
+			settingsGroup.GET("", middleware.RequirePermission(string(model.PermissionSettingsRead)), handlers.Setting.GetAllSettings)
+			settingsGroup.PUT("", middleware.RequirePermission(string(model.PermissionSettingsWrite)), handlers.Setting.UpdateSettings)
+		}
+
+		// Subjects Routes
+		subjectsGroup := adminAPI.Group("/subjects")
+		{
+			subjectsGroup.GET("", middleware.RequirePermission(string(model.PermissionSubjectsRead)), handlers.Subject.GetAll)
+			subjectsGroup.POST("", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Create)
+			subjectsGroup.PUT("/:id", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Update)
+			subjectsGroup.DELETE("/:id", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Delete)
+		}
 	}
 
 	return router
