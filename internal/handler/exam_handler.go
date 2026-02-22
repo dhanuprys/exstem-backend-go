@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -90,6 +91,7 @@ func (h *ExamHandler) CreateExam(c *gin.Context) {
 	exam := &model.Exam{
 		Title:           req.Title,
 		AuthorID:        claims.UserID,
+		SubjectID:       req.SubjectID,
 		ScheduledStart:  req.ScheduledStart,
 		ScheduledEnd:    req.ScheduledEnd,
 		DurationMinutes: req.DurationMinutes,
@@ -101,7 +103,7 @@ func (h *ExamHandler) CreateExam(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, gin.H{"exam": exam})
+	response.Success(c, http.StatusCreated, exam)
 }
 
 // PublishExam godoc
@@ -137,6 +139,7 @@ func (h *ExamHandler) PublishExam(c *gin.Context) {
 		case errors.Is(err, service.ErrExamNotDraft):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotAvailable)
 		default:
+			fmt.Printf("[ExamHandler] Failed to publish exam %s: %v\n", examID.String(), err)
 			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		}
 		return
@@ -174,7 +177,7 @@ func (h *ExamHandler) AddTargetRule(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, gin.H{"target_rule": rule})
+	response.Success(c, http.StatusCreated, rule)
 }
 
 // GetTargetRules godoc
@@ -197,7 +200,7 @@ func (h *ExamHandler) GetTargetRules(c *gin.Context) {
 		rules = []model.ExamTargetRule{}
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"target_rules": rules})
+	response.Success(c, http.StatusOK, rules)
 }
 
 // RefreshExamCache godoc
@@ -308,7 +311,7 @@ func (h *ExamHandler) GetExamResults(c *gin.Context) {
 		TotalPages: int(math.Ceil(float64(total) / float64(perPage))),
 	}
 
-	response.SuccessWithPagination(c, http.StatusOK, gin.H{"results": results}, pagination)
+	response.SuccessWithPagination(c, http.StatusOK, results, pagination)
 }
 
 // GetExam godoc
@@ -327,7 +330,7 @@ func (h *ExamHandler) GetExam(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"exam": exam})
+	response.Success(c, http.StatusOK, exam)
 }
 
 // UpdateExam godoc

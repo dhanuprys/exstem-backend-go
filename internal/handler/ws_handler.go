@@ -3,23 +3,22 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"github.com/stemsi/exstem-backend/internal/config"
 	"github.com/stemsi/exstem-backend/internal/middleware"
 	"github.com/stemsi/exstem-backend/internal/service"
 	ws "github.com/stemsi/exstem-backend/internal/websocket"
 )
 
 // buildUpgrader creates a WebSocket upgrader with origin validation.
-// allowedOrigins comes from config.Config.AllowedOrigins.
-// An empty slice permits all origins (development mode).
 func buildUpgrader(allowedOrigins []string) websocket.Upgrader {
 	return websocket.Upgrader{
 		ReadBufferSize:  1024,
@@ -39,7 +38,6 @@ func buildUpgrader(allowedOrigins []string) websocket.Upgrader {
 	}
 }
 
-// WSHandler handles WebSocket exam streaming.
 type WSHandler struct {
 	rdb            *redis.Client
 	examService    *service.ExamService
@@ -48,7 +46,6 @@ type WSHandler struct {
 	upgrader       websocket.Upgrader
 }
 
-// NewWSHandler creates a new WSHandler.
 func NewWSHandler(rdb *redis.Client, examService *service.ExamService, sessionService *service.ExamSessionService, log zerolog.Logger, allowedOrigins []string) *WSHandler {
 	return &WSHandler{
 		rdb:            rdb,
@@ -59,11 +56,8 @@ func NewWSHandler(rdb *redis.Client, examService *service.ExamService, sessionSe
 	}
 }
 
-// ws.RequestPayload and ws.ResponsePayload are used from the shared package.
-
 // ExamWebSocketStream godoc
 // WS /ws/v1/student/exams/:exam_id/stream
-// Upgrades to WebSocket for real-time autosave and instant grading.
 func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 	claims := middleware.GetClaims(c)
 	if claims == nil {
@@ -86,12 +80,12 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 
 	studentID := claims.UserID
 
-	// SECURITY: Validate the student has an active session before streaming.
+	// SECURITY: Validate session exists
 	if err := h.sessionService.VerifyActiveSession(c.Request.Context(), examID, studentID); err != nil {
 		ws.WriteError(conn, "no active session for this exam")
 		return
 	}
-	answersKey := fmt.Sprintf("student:%d:exam:%s:answers", studentID, examID)
+	answersKey := config.CacheKey.StudentAnswersKey(examID.String(), studentID)
 
 	wsLog := h.log.With().
 		Int("student_id", studentID).
@@ -101,66 +95,137 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 	wsLog.Info().Msg("Student connected")
 
 	for {
-		// Use helper to read message with deadline handling.
-		var msg ws.RequestPayload
-		err := ws.ReadJSON(conn, &msg)
+		// 1. READ RAW BYTES (Critical Step)
+		// We do not unmarshal into a specific struct yet.
+		_, messageBytes, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				wsLog.Warn().Err(err).Msg("Unexpected close")
-			} else {
-				wsLog.Debug().Msg("Connection closed")
 			}
 			break
 		}
 
-		switch msg.Action {
+		// 2. PEEK AT THE ACTION
+		var envelope ws.RequestEnvelope
+		if err := json.Unmarshal(messageBytes, &envelope); err != nil {
+			wsLog.Warn().Err(err).Msg("Invalid JSON format")
+			continue
+		}
+
+		// 3. ROUTE TO SPECIFIC HANDLER based on Action
+		switch envelope.Action {
 		case ws.ActionAutosave:
-			h.handleAutosave(conn, answersKey, studentID, examID, &msg)
+			var req ws.AutosaveRequest
+			if err := json.Unmarshal(messageBytes, &req); err != nil {
+				ws.WriteError(conn, "invalid autosave format")
+				continue
+			}
+			h.handleAutosave(conn, answersKey, studentID, examID, &req)
+
+		case ws.ActionCheat:
+			var req ws.CheatRequest
+			// This works because CheatRequest has the 'Payload' field
+			if err := json.Unmarshal(messageBytes, &req); err != nil {
+				wsLog.Error().Err(err).Msg("Cheat payload unmarshal failed")
+				continue
+			}
+			h.handleCheat(wsLog, studentID, examID, &req)
+
 		case ws.ActionSubmit:
 			h.handleSubmit(conn, wsLog, answersKey, studentID, examID)
+
+		case ws.ActionPing:
+			ws.WriteTyped(conn, ws.PongResponse{Event: ws.EventPong})
+
 		default:
-			wsLog.Warn().Str("action", string(msg.Action)).Msg("Unknown action")
-			ws.WriteError(conn, "unknown action: "+string(msg.Action))
+			wsLog.Warn().Str("action", string(envelope.Action)).Msg("Unknown action")
+			ws.WriteError(conn, "unknown action: "+string(envelope.Action))
 		}
 	}
 }
 
-// handleAutosave saves a single answer to Redis and queues it for persistence.
-func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, studentID int, examID uuid.UUID, msg *ws.RequestPayload) {
+// handleCheat queues the cheat event for persistence.
+func (h *WSHandler) handleCheat(wsLog zerolog.Logger, studentID int, examID uuid.UUID, msg *ws.CheatRequest) {
 	ctx := context.Background()
 
-	if msg.QID == "" || msg.Answer == "" {
-		ws.WriteError(conn, "q_id and ans are required")
+	// We store the payload as json.RawMessage (bytes) so that when it goes
+	// into Postgres JSONB, it is treated as a nested object, not a string.
+	// However, since msg.Payload is a string (double encoded), we just pass it through.
+	cheatEvent := map[string]interface{}{
+		"student_id": studentID,
+		"exam_id":    examID.String(),
+		"timestamp":  time.Now().Unix(),
+		"payload":    msg.Payload, // The raw string from client
+	}
+
+	data, _ := json.Marshal(cheatEvent)
+
+	if err := h.rdb.RPush(ctx, config.WorkerKey.PersistCheatsQueue, data).Err(); err != nil {
+		wsLog.Error().Err(err).Msg("Failed to queue cheat report")
+	}
+
+	// Security Best Practice: Do NOT acknowledge cheat events to the client.
+	// Silent logging prevents hackers from probing the detection system.
+}
+
+// handleAutosave saves a single answer to Redis.
+func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, studentID int, examID uuid.UUID, msg *ws.AutosaveRequest) {
+	ctx := context.Background()
+
+	if msg.QID == "" {
+		ws.WriteError(conn, "q_id is required")
 		return
 	}
 
-	// SECURITY: Validate QID is a well-formed UUID to prevent Redis key injection.
+	// Verify QID is valid UUID to prevent injection
 	if _, err := uuid.Parse(msg.QID); err != nil {
 		ws.WriteError(conn, "invalid q_id format")
 		return
 	}
 
-	if err := h.rdb.HSet(ctx, answersKey, msg.QID, msg.Answer).Err(); err != nil {
-		h.log.Error().Err(err).Int("student_id", studentID).Msg("Autosave Redis error")
-		ws.WriteError(conn, "save failed")
-		return
-	}
-
+	// Prepare persistence payload
 	payload, _ := json.Marshal(map[string]interface{}{
 		"student_id": studentID,
 		"exam_id":    examID.String(),
 		"q_id":       msg.QID,
 		"answer":     msg.Answer,
 	})
-	h.rdb.RPush(ctx, "persist_answers_queue", payload)
 
-	ws.WriteJSON(conn, ws.EventSuccess, map[string]string{"status": "saved"})
+	// Handle Unanswer (Empty string)
+	if msg.Answer == "" {
+		if err := h.rdb.HDel(ctx, answersKey, msg.QID).Err(); err != nil {
+			h.log.Error().Err(err).Int("student_id", studentID).Msg("Autosave Redis error")
+			ws.WriteError(conn, "save failed")
+			return
+		}
+		h.rdb.RPush(ctx, config.WorkerKey.PersistAnswersQueue, payload)
+		ws.WriteTyped(conn, ws.AutosaveResponse{
+			Event:  ws.EventSuccess,
+			Status: "removed",
+		})
+		return
+	}
+
+	// Handle Save
+	if err := h.rdb.HSet(ctx, answersKey, msg.QID, msg.Answer).Err(); err != nil {
+		h.log.Error().Err(err).Int("student_id", studentID).Msg("Autosave Redis error")
+		ws.WriteError(conn, "save failed")
+		return
+	}
+
+	h.rdb.RPush(ctx, config.WorkerKey.PersistAnswersQueue, payload)
+
+	ws.WriteTyped(conn, ws.AutosaveResponse{
+		Event:  ws.EventSuccess,
+		Status: "saved",
+	})
 }
 
-// handleSubmit grades the exam in RAM and queues the score for persistence.
+// handleSubmit grades the exam in RAM.
 func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, answersKey string, studentID int, examID uuid.UUID) {
 	ctx := context.Background()
 
+	// 1. Get correct answers (Cached in service layer usually)
 	answerKey, err := h.examService.GetAnswerKey(ctx, examID)
 	if err != nil {
 		wsLog.Error().Err(err).Msg("Get answer key error")
@@ -168,6 +233,7 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 		return
 	}
 
+	// 2. Get student answers from Redis
 	studentAnswers, err := h.rdb.HGetAll(ctx, answersKey).Result()
 	if err != nil {
 		wsLog.Error().Err(err).Msg("Get student answers error")
@@ -175,6 +241,7 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 		return
 	}
 
+	// 3. Grade it
 	correct := 0
 	total := len(answerKey)
 	for qID, correctAns := range answerKey {
@@ -188,23 +255,19 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 		score = (float64(correct) / float64(total)) * 100
 	}
 
+	// 4. Queue Score for Persistence
 	scorePayload, _ := json.Marshal(map[string]interface{}{
 		"student_id": studentID,
 		"exam_id":    examID.String(),
 		"score":      score,
 	})
-	h.rdb.RPush(ctx, "persist_scores_queue", scorePayload)
+	h.rdb.RPush(ctx, config.WorkerKey.PersistScoresQueue, scorePayload)
 
-	wsLog.Info().
-		Float64("score", score).
-		Int("correct", correct).
-		Int("total", total).
-		Msg("Exam submitted and graded")
+	wsLog.Info().Float64("score", score).Msg("Exam submitted")
 
-	// Send scalable response: nested data
-	responseData := map[string]interface{}{
-		"status": "completed",
-		"score":  score,
-	}
-	ws.WriteJSON(conn, ws.EventGraded, responseData)
+	ws.WriteTyped(conn, ws.GradedResponse{
+		Event:  ws.EventGraded,
+		Status: "completed",
+		Score:  score,
+	})
 }

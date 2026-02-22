@@ -29,3 +29,11 @@ type ExamSession struct {
 type JoinExamRequest struct {
 	EntryToken string `json:"entry_token" binding:"required,min=4,max=20"`
 }
+
+type ExamSessionState struct {
+	SessionID        uuid.UUID         `json:"session_id"`
+	ExamID           uuid.UUID         `json:"exam_id"`
+	StudentID        int               `json:"student_id"`
+	AutosavedAnswers map[string]string `json:"autosaved_answers"`
+	RemainingTime    float64           `json:"remaining_time"`
+}

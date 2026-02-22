@@ -58,6 +58,25 @@ func (h *AuthHandler) GetStudentProfile(c *gin.Context) {
 	})
 }
 
+// StudentLogout godoc
+// POST /api/v1/auth/student/logout
+// Logs out the currently authenticated student.
+func (h *AuthHandler) StudentLogout(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, response.ErrTokenRequired)
+		return
+	}
+
+	err := h.authService.ResetStudentSession(c.Request.Context(), claims.UserID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{})
+}
+
 // GetAdminProfile godoc
 // GET /api/v1/auth/admin/me
 // Returns the profile of the currently authenticated admin.

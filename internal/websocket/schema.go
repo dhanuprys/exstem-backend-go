@@ -1,41 +1,66 @@
 package websocket
 
-// Action defines the type of action in a request.
+// ─── Actions (Client → Server) ──────────────────────────────────────
+
 type Action string
 
 const (
 	ActionAutosave Action = "autosave"
 	ActionSubmit   Action = "submit"
 	ActionPing     Action = "ping"
+	ActionCheat    Action = "cheat"
 )
 
-// Event defines the type of event in a response.
+// RequestEnvelope is used to peek at the action before full parsing.
+type RequestEnvelope struct {
+	Action Action `json:"action"`
+}
+
+// AutosaveRequest is sent by the client to save a single answer.
+type AutosaveRequest struct {
+	Action Action `json:"action"`
+	QID    string `json:"q_id"`
+	Answer string `json:"ans"`
+}
+
+// CheatRequest is sent by the client to report a cheat event.
+type CheatRequest struct {
+	Action  Action `json:"action"`
+	Payload string `json:"payload"` // Receives the JSON string directly
+}
+
+// SubmitRequest is sent by the client to finish and grade the exam.
+type SubmitRequest struct {
+	Action Action `json:"action"`
+}
+
+// ─── Events (Server → Client) ───────────────────────────────────────
+
 type Event string
 
 const (
 	EventError   Event = "error"
 	EventSuccess Event = "success"
 	EventGraded  Event = "graded"
+	EventPong    Event = "pong"
 )
 
-// RequestPayload represents the standard incoming message structure.
-// Specific payloads (like Autosave) can embed this or match this structure.
-type RequestPayload struct {
-	Action Action `json:"action"`
-	// For flexibility, specific data fields are often flattened in simple protocols,
-	// but a "data" field is more scalable.
-	// However, to support existing flat structure:
-	QID    string `json:"q_id,omitempty"`
-	Answer string `json:"ans,omitempty"`
+type AutosaveResponse struct {
+	Event  Event  `json:"event"`
+	Status string `json:"status"`
 }
 
-// ResponsePayload represents the standard outgoing message structure.
-type ResponsePayload struct {
-	Event Event       `json:"event"`
-	Data  interface{} `json:"data,omitempty"`
-	Error string      `json:"error,omitempty"`
-	// Deprecated: flattened fields for backward compatibility if needed,
-	// but purely new code should use Data.
-	Status string   `json:"status,omitempty"`
-	Score  *float64 `json:"score,omitempty"`
+type GradedResponse struct {
+	Event  Event   `json:"event"`
+	Status string  `json:"status"`
+	Score  float64 `json:"score"`
+}
+
+type ErrorResponse struct {
+	Event Event  `json:"event"`
+	Error string `json:"error"`
+}
+
+type PongResponse struct {
+	Event Event `json:"event"`
 }

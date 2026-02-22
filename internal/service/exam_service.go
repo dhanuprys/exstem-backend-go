@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"github.com/stemsi/exstem-backend/internal/config"
 	"github.com/stemsi/exstem-backend/internal/model"
 	"github.com/stemsi/exstem-backend/internal/repository"
 	"github.com/stemsi/exstem-backend/internal/response"
@@ -103,11 +104,11 @@ func (s *ExamService) Publish(ctx context.Context, examID uuid.UUID, authorID in
 		return fmt.Errorf("get exam: %w", err)
 	}
 
-	if exam.AuthorID != authorID {
-		return errors.New("not the author of this exam")
+	if authorID != 0 && exam.AuthorID != authorID {
+		return ErrNotExamAuthor
 	}
 	if exam.Status != model.ExamStatusDraft {
-		return fmt.Errorf("exam status is %s, expected DRAFT", exam.Status)
+		return ErrExamNotDraft
 	}
 
 	// Prewarm cache for this exam.
@@ -189,9 +190,10 @@ func (s *ExamService) WarmExamCache(ctx context.Context, exam *model.Exam) error
 
 	// Cache both atomically via pipeline.
 	pipe := s.rdb.Pipeline()
-	pipe.Set(ctx, fmt.Sprintf("exam:%s:payload", exam.ID), payloadJSON, 0)
-	pipe.Del(ctx, fmt.Sprintf("exam:%s:key", exam.ID))
-	pipe.HSet(ctx, fmt.Sprintf("exam:%s:key", exam.ID), answerKey)
+	pipe.Set(ctx, config.CacheKey.ExamPayloadKey(exam.ID.String()), payloadJSON, 0)
+	pipe.Del(ctx, config.CacheKey.ExamAnswerKey(exam.ID.String()))
+	pipe.HSet(ctx, config.CacheKey.ExamAnswerKey(exam.ID.String()), answerKey)
+	pipe.Set(ctx, config.CacheKey.ExamDurationKey(exam.ID.String()), exam.DurationMinutes, 0)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("cache to redis: %w", err)
@@ -240,7 +242,7 @@ func (s *ExamService) PrewarmAllCaches(ctx context.Context) error {
 
 // GetExamPayload retrieves the cached student payload from Redis.
 func (s *ExamService) GetExamPayload(ctx context.Context, examID uuid.UUID) (*model.ExamPayload, error) {
-	key := fmt.Sprintf("exam:%s:payload", examID)
+	key := config.CacheKey.ExamPayloadKey(examID.String())
 	data, err := s.rdb.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -258,7 +260,7 @@ func (s *ExamService) GetExamPayload(ctx context.Context, examID uuid.UUID) (*mo
 
 // GetAnswerKey retrieves the answer key from Redis for instant grading.
 func (s *ExamService) GetAnswerKey(ctx context.Context, examID uuid.UUID) (map[string]string, error) {
-	key := fmt.Sprintf("exam:%s:key", examID)
+	key := config.CacheKey.ExamAnswerKey(examID.String())
 	result, err := s.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
 		return nil, fmt.Errorf("get answer key: %w", err)
@@ -288,9 +290,18 @@ func (s *ExamService) Update(ctx context.Context, authorID int, exam *model.Exam
 	if authorID != 0 && existing.AuthorID != authorID {
 		return ErrNotExamAuthor
 	}
-	if existing.Status != model.ExamStatusDraft {
-		return ErrExamNotDraft
+	// Always allow change
+	// if existing.Status != model.ExamStatusDraft {
+	// 	return ErrExamNotDraft
+	// }
+
+	// rewarm cache if exam is published
+	if exam.Status == model.ExamStatusPublished {
+		if err := s.WarmExamCache(ctx, exam); err != nil {
+			return err
+		}
 	}
+
 	return s.examRepo.Update(ctx, exam)
 }
 

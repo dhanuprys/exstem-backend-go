@@ -29,6 +29,7 @@ type Handlers struct {
 	Class         *handler.ClassHandler
 	Setting       *handler.SettingHandler
 	Subject       *handler.SubjectHandler
+	Major         *handler.MajorHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -83,6 +84,7 @@ func SetupRouter(
 		auth.POST("/admin/login", handlers.Auth.AdminLogin)
 
 		// Authenticated profile routes
+		auth.POST("/student/logout", middleware.RequireStudentJWT(authService), handlers.Auth.StudentLogout)
 		auth.GET("/student/me", middleware.RequireStudentJWT(authService), handlers.Auth.GetStudentProfile)
 		auth.GET("/admin/me", middleware.RequireAdminJWT(authService), handlers.Auth.GetAdminProfile)
 	}
@@ -97,6 +99,7 @@ func SetupRouter(
 		studentAPI.GET("/lobby", handlers.StudentPortal.GetLobby)
 		studentAPI.POST("/exams/:exam_id/join", handlers.StudentPortal.JoinExam)
 		studentAPI.GET("/exams/:exam_id/paper", handlers.StudentPortal.GetExamPaper)
+		studentAPI.GET("/exams/:exam_id/state", handlers.StudentPortal.GetExamState)
 	}
 
 	// ─── 3. WebSocket Group (Student WS Auth) ──────────────────────────
@@ -275,6 +278,15 @@ func SetupRouter(
 			subjectsGroup.POST("", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Create)
 			subjectsGroup.PUT("/:id", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Update)
 			subjectsGroup.DELETE("/:id", middleware.RequirePermission(string(model.PermissionSubjectsWrite)), handlers.Subject.Delete)
+		}
+
+		// Majors Routes
+		majorsGroup := adminAPI.Group("/majors")
+		{
+			majorsGroup.GET("", middleware.RequirePermission(string(model.PermissionMajorRead)), handlers.Major.GetAll)
+			majorsGroup.POST("", middleware.RequirePermission(string(model.PermissionMajorWrite)), handlers.Major.Create)
+			majorsGroup.PUT("/:id", middleware.RequirePermission(string(model.PermissionMajorWrite)), handlers.Major.Update)
+			majorsGroup.DELETE("/:id", middleware.RequirePermission(string(model.PermissionMajorDelete)), handlers.Major.Delete)
 		}
 	}
 

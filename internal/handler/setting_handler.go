@@ -54,5 +54,5 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		return
 	}
-	response.Success(c, http.StatusOK, gin.H{"settings": settings})
+	response.Success(c, http.StatusOK, settings)
 }

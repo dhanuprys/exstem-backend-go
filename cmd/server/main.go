@@ -64,6 +64,7 @@ func main() {
 	targetRepo := repository.NewExamTargetRuleRepository(pool)
 	settingRepo := repository.NewSettingRepository(pool)
 	subjectRepo := repository.NewSubjectRepository(pool)
+	majorRepo := repository.NewMajorRepository(pool)
 
 	// ─── Initialize Services ──────────────────────────────────────────
 	authService := service.NewAuthService(cfg, rdb)
@@ -71,13 +72,14 @@ func main() {
 	adminService := service.NewAdminService(adminRepo, roleRepo)
 	examService := service.NewExamService(examRepo, questionRepo, targetRepo, rdb, log)
 	questionService := service.NewQuestionService(questionRepo)
-	sessionService := service.NewExamSessionService(sessionRepo, examRepo, targetRepo)
+	sessionService := service.NewExamSessionService(sessionRepo, examRepo, targetRepo, rdb)
 	mediaService := service.NewMediaService(cfg)
 	adminUserService := service.NewAdminUserService(pool)
 	adminRoleService := service.NewAdminRoleService(roleRepo)
 	classService := service.NewClassService(classRepo)
 	settingService := service.NewSettingService(settingRepo, log)
 	subjectService := service.NewSubjectService(subjectRepo, log)
+	majorService := service.NewMajorService(majorRepo)
 
 	// ─── Initialize Handlers ──────────────────────────────────────────
 	handlers := &router.Handlers{
@@ -94,6 +96,7 @@ func main() {
 		Class:         handler.NewClassHandler(classService),
 		Setting:       handler.NewSettingHandler(settingService),
 		Subject:       handler.NewSubjectHandler(subjectService),
+		Major:         handler.NewMajorHandler(majorService),
 	}
 
 	// ─── Start Background Workers ─────────────────────────────────────
@@ -101,9 +104,11 @@ func main() {
 
 	autosaveWorker := worker.NewAutosaveWorker(pool, rdb, log)
 	scoringWorker := worker.NewScoringWorker(pool, rdb, log)
+	cheatWorker := worker.NewCheatWorker(pool, rdb, log)
 
 	go autosaveWorker.Start(workerCtx)
 	go scoringWorker.Start(workerCtx)
+	go cheatWorker.Start(workerCtx)
 
 	// ─── Prewarm Redis Caches ─────────────────────────────────────────
 	// Load all published exams into Redis BEFORE accepting traffic.

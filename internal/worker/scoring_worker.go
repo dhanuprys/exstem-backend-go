@@ -9,16 +9,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+	"github.com/stemsi/exstem-backend/internal/config"
 )
 
-// ScoringWorker consumes persist_scores_queue and updates exam_sessions in PostgreSQL.
+const (
+	ScoreBatchSize    = 50
+	ScoreBatchTimeout = 2 * time.Second
+	ScorePollTimeout  = 1 * time.Second
+)
+
 type ScoringWorker struct {
 	pool *pgxpool.Pool
 	rdb  *redis.Client
 	log  zerolog.Logger
 }
 
-// NewScoringWorker creates a new ScoringWorker.
 func NewScoringWorker(pool *pgxpool.Pool, rdb *redis.Client, log zerolog.Logger) *ScoringWorker {
 	return &ScoringWorker{
 		pool: pool,
@@ -33,94 +38,165 @@ type scorePayload struct {
 	Score     float64 `json:"score"`
 }
 
-// Start begins the infinite worker loop. Call in a goroutine.
+// ----------------------------------------------------------------
+// Worker loop with batching
+// ----------------------------------------------------------------
+
 func (w *ScoringWorker) Start(ctx context.Context) {
-	w.log.Info().Msg("Worker started")
+	w.log.Info().Msg("ScoringWorker started")
+
+	batch := make([]*scorePayload, 0, ScoreBatchSize)
+	lastFlush := time.Now()
 
 	for {
+		// Should flush?
+		if len(batch) > 0 &&
+			(len(batch) >= ScoreBatchSize || time.Since(lastFlush) >= ScoreBatchTimeout) {
+
+			w.flushSafe(ctx, batch)
+			batch = batch[:0]
+			lastFlush = time.Now()
+		}
+
 		select {
 		case <-ctx.Done():
-			w.log.Info().Msg("Worker stopping...")
-			w.drain(context.Background())
-			w.log.Info().Msg("Worker stopped")
+			w.log.Info().Msg("Shutdown requested. Flushing remaining batch...")
+			w.flushSafe(context.Background(), batch)
 			return
+
 		default:
-			w.processNext(ctx)
+			item, err := w.rdb.BLPop(ctx, ScorePollTimeout, config.WorkerKey.PersistScoresQueue).Result()
+			if err != nil {
+				if err != redis.Nil && ctx.Err() == nil {
+					w.log.Error().Err(err).Msg("BLPop error")
+				}
+				continue
+			}
+
+			if len(item) < 2 {
+				continue
+			}
+
+			var p scorePayload
+			if err := json.Unmarshal([]byte(item[1]), &p); err != nil {
+				w.log.Error().Err(err).Msg("Invalid JSON payload")
+				continue
+			}
+
+			batch = append(batch, &p)
 		}
 	}
 }
 
-func (w *ScoringWorker) processNext(ctx context.Context) {
-	result, err := w.rdb.BLPop(ctx, time.Second, "persist_scores_queue").Result()
-	if err != nil {
-		if err != redis.Nil && ctx.Err() == nil {
-			if err.Error() != "redis: nil" {
-				w.log.Error().Err(err).Msg("BLPop error")
+// ----------------------------------------------------------------
+// Batch Upsert/Update Wrapper
+// ----------------------------------------------------------------
+
+func (w *ScoringWorker) flushSafe(ctx context.Context, batch []*scorePayload) {
+	if len(batch) == 0 {
+		return
+	}
+
+	if err := w.bulkUpdateScores(ctx, batch); err != nil {
+		w.log.Warn().Err(err).Msg("bulk score update failed, using fallback")
+
+		for _, p := range batch {
+			if err := w.persistSingle(ctx, p); err != nil {
+				w.log.Error().Err(err).Msg("persistSingle failed — requeueing")
+				raw, _ := json.Marshal(p)
+				w.rdb.RPush(ctx, config.WorkerKey.PersistScoresQueue, raw)
 			}
 		}
 		return
 	}
 
-	if len(result) < 2 {
-		return
-	}
-
-	var payload scorePayload
-	if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
-		w.log.Error().Err(err).Msg("Unmarshal error")
-		return
-	}
-
-	if err := w.persistScore(ctx, &payload); err != nil {
-		w.log.Error().Err(err).
-			Int("student_id", payload.StudentID).
-			Str("exam_id", payload.ExamID).
-			Msg("Persist error, retrying in 5s")
-		w.rdb.RPush(ctx, "persist_scores_queue", result[1])
-		time.Sleep(5 * time.Second)
-	}
+	// After successful score updates → delete autosave buffers in Redis
+	w.bulkClearAutosavedAnswers(ctx, batch)
 }
 
-func (w *ScoringWorker) persistScore(ctx context.Context, p *scorePayload) error {
-	examID, err := uuid.Parse(p.ExamID)
+// ----------------------------------------------------------------
+// BULK PostgreSQL UPDATE using UNNEST + alias
+// ----------------------------------------------------------------
+
+func (w *ScoringWorker) bulkUpdateScores(ctx context.Context, batch []*scorePayload) error {
+	n := len(batch)
+
+	examIDs := make([]uuid.UUID, 0, n)
+	students := make([]int, 0, n)
+	scores := make([]float64, 0, n)
+	finishedAts := make([]time.Time, n)
+
+	now := time.Now()
+	for i, p := range batch {
+		eID, err := uuid.Parse(p.ExamID)
+		if err != nil {
+			return err
+		}
+		examIDs = append(examIDs, eID)
+		students = append(students, p.StudentID)
+		scores = append(scores, p.Score)
+		finishedAts[i] = now
+	}
+
+	query := `
+		UPDATE exam_sessions AS s
+		SET status = 'COMPLETED',
+		    final_score = t.score,
+		    finished_at = t.finished_at
+		FROM (
+			SELECT 
+				u.exam_id,
+				u.student_id,
+				u.score,
+				u.finished_at
+			FROM UNNEST(
+				$1::uuid[],
+				$2::int[],
+				$3::float8[],
+				$4::timestamptz[]
+			) AS u (exam_id, student_id, score, finished_at)
+		) AS t
+		WHERE s.exam_id = t.exam_id
+		  AND s.student_id = t.student_id
+	`
+
+	_, err := w.pool.Exec(ctx, query, examIDs, students, scores, finishedAts)
+	return err
+}
+
+// ----------------------------------------------------------------
+// BULK Redis DEL for clearing autosaved answers
+// ----------------------------------------------------------------
+
+func (w *ScoringWorker) bulkClearAutosavedAnswers(ctx context.Context, batch []*scorePayload) {
+	pipe := w.rdb.Pipeline()
+
+	for _, p := range batch {
+		key := config.CacheKey.StudentAnswersKey(p.ExamID, p.StudentID)
+		pipe.Del(ctx, key)
+	}
+
+	_, _ = pipe.Exec(ctx)
+}
+
+// ----------------------------------------------------------------
+// FALLBACK single update
+// ----------------------------------------------------------------
+
+func (w *ScoringWorker) persistSingle(ctx context.Context, p *scorePayload) error {
+	eID, err := uuid.Parse(p.ExamID)
 	if err != nil {
 		return err
 	}
 
-	now := time.Now()
 	_, err = w.pool.Exec(ctx,
 		`UPDATE exam_sessions
-		 SET status = 'COMPLETED', final_score = $1, finished_at = $2
-		 WHERE exam_id = $3 AND student_id = $4`,
-		p.Score, now, examID, p.StudentID,
+		 SET status = 'COMPLETED',
+		     final_score = $1,
+		     finished_at = NOW()
+		 WHERE exam_id = $2 AND student_id = $3`,
+		p.Score, eID, p.StudentID,
 	)
+
 	return err
-}
-
-// drain processes all remaining items before shutdown.
-func (w *ScoringWorker) drain(ctx context.Context) {
-	drained := 0
-	for {
-		result, err := w.rdb.LPop(ctx, "persist_scores_queue").Result()
-		if err != nil {
-			break
-		}
-
-		var payload scorePayload
-		if err := json.Unmarshal([]byte(result), &payload); err != nil {
-			w.log.Error().Err(err).Msg("Drain unmarshal error")
-			continue
-		}
-
-		if err := w.persistScore(ctx, &payload); err != nil {
-			w.log.Error().Err(err).Msg("Drain persist error")
-			w.rdb.RPush(ctx, "persist_scores_queue", result)
-			break
-		}
-		drained++
-	}
-
-	if drained > 0 {
-		w.log.Info().Int("count", drained).Msg("Drained remaining items")
-	}
 }

@@ -46,8 +46,17 @@ const (
 	// PermissionSubjectsRead allows viewing subjects.
 	PermissionSubjectsRead Permission = "subjects:read"
 
-	// PermissionSubjectsWrite allows creating, editing, and deleting subjects.
+	// PermissionSubjectsWrite allows creating, updating, and deleting subjects.
 	PermissionSubjectsWrite Permission = "subjects:write"
+
+	// PermissionMajorRead allows viewing majors.
+	PermissionMajorRead Permission = "major:read"
+
+	// PermissionMajorWrite allows creating and updating majors.
+	PermissionMajorWrite Permission = "major:write"
+
+	// PermissionMajorDelete allows deleting majors.
+	PermissionMajorDelete Permission = "major:delete"
 )
 
 // AllPermissions is a slice of all available permissions.
@@ -67,4 +76,7 @@ var AllPermissions = []Permission{
 	PermissionSettingsWrite,
 	PermissionSubjectsRead,
 	PermissionSubjectsWrite,
+	PermissionMajorRead,
+	PermissionMajorWrite,
+	PermissionMajorDelete,
 }

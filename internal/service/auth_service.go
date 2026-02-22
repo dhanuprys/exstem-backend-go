@@ -67,7 +67,7 @@ func (s *AuthService) CheckPassword(hash, password string) error {
 // GenerateStudentToken creates a JWT for a student and registers the session in Redis.
 // Returns an error if a session already exists (new logins are rejected).
 func (s *AuthService) GenerateStudentToken(ctx context.Context, studentID, classID int) (string, error) {
-	sessionKey := fmt.Sprintf("login:%d", studentID)
+	sessionKey := config.CacheKey.StudentSessionKey(studentID)
 
 	// Check if an active session exists — reject new login if so.
 	existing, err := s.rdb.Get(ctx, sessionKey).Result()
@@ -150,7 +150,7 @@ func (s *AuthService) ValidateToken(tokenStr string) (*Claims, error) {
 
 // ValidateStudentSession checks that the token's JTI matches the active session in Redis.
 func (s *AuthService) ValidateStudentSession(ctx context.Context, studentID int, jti string) error {
-	sessionKey := fmt.Sprintf("login:%d", studentID)
+	sessionKey := config.CacheKey.StudentSessionKey(studentID)
 	stored, err := s.rdb.Get(ctx, sessionKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -166,6 +166,6 @@ func (s *AuthService) ValidateStudentSession(ctx context.Context, studentID int,
 
 // ResetStudentSession removes a student's session from Redis, allowing a new login.
 func (s *AuthService) ResetStudentSession(ctx context.Context, studentID int) error {
-	sessionKey := fmt.Sprintf("login:%d", studentID)
+	sessionKey := config.CacheKey.StudentSessionKey(studentID)
 	return s.rdb.Del(ctx, sessionKey).Err()
 }

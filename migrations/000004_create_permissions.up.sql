@@ -24,5 +24,8 @@ INSERT INTO permissions (code, description) VALUES
     ('settings:read', 'View application settings'),
     ('settings:write', 'Edit application settings'),
     ('subjects:read', 'View subjects'),
-    ('subjects:write', 'Create, edit, and delete subjects')
+    ('subjects:write', 'Create, edit, and delete subjects'),
+    ('major:read', 'View major list'),
+    ('major:write', 'Define new majors or update existing ones'),
+    ('major:delete', 'Delete a major')
 ON CONFLICT (code) DO NOTHING;

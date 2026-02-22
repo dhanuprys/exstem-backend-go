@@ -124,3 +124,35 @@ func (h *StudentPortalHandler) GetExamPaper(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, payload)
 }
+
+// GetExamState godoc
+// GET /api/v1/student/exams/:exam_id/state
+// Returns the current state of the exam for the student.
+// This endpoint will cover the page reload, so the frontend can get the answered questions and the remaining time.
+func (h *StudentPortalHandler) GetExamState(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, response.ErrTokenRequired)
+		return
+	}
+
+	examID, err := uuid.Parse(c.Param("exam_id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	// SECURITY: Verify the student has an active session for this exam.
+	if err := h.sessionService.VerifyActiveSession(c.Request.Context(), examID, claims.UserID); err != nil {
+		response.Fail(c, http.StatusForbidden, response.ErrForbidden)
+		return
+	}
+
+	state, err := h.sessionService.GetExamState(c.Request.Context(), examID, claims.UserID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	response.Success(c, http.StatusOK, state)
+}

@@ -41,7 +41,7 @@ func (h *QuestionHandler) ListQuestions(c *gin.Context) {
 		questions = []model.Question{}
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"questions": questions})
+	response.Success(c, http.StatusOK, questions)
 }
 
 // AddQuestion godoc
@@ -75,7 +75,7 @@ func (h *QuestionHandler) AddQuestion(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, gin.H{"question": question})
+	response.Success(c, http.StatusCreated, question)
 }
 
 // ReplaceQuestions godoc

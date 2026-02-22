@@ -49,11 +49,11 @@ func (r *ExamSessionRepository) GetByExamAndStudent(ctx context.Context, examID 
 // Create inserts a new exam session (student joins the exam).
 func (r *ExamSessionRepository) Create(ctx context.Context, s *model.ExamSession) error {
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO exam_sessions (exam_id, student_id, status)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO exam_sessions (exam_id, student_id, status, started_at)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (exam_id, student_id) DO NOTHING
 		 RETURNING id, started_at`,
-		s.ExamID, s.StudentID, model.SessionStatusInProgress,
+		s.ExamID, s.StudentID, model.SessionStatusInProgress, s.StartedAt,
 	).Scan(&s.ID, &s.StartedAt)
 }
 
@@ -166,4 +166,19 @@ func (r *ExamSessionRepository) ListByExam(ctx context.Context, examID uuid.UUID
 	}
 
 	return results, total, nil
+}
+
+// GetStartTime returns the start time of a student's exam session.
+func (r *ExamSessionRepository) GetStartTime(ctx context.Context, examID uuid.UUID, studentID int) (time.Time, error) {
+	var startTime time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT started_at
+		 FROM exam_sessions
+		 WHERE exam_id = $1 AND student_id = $2`,
+		examID, studentID,
+	).Scan(&startTime)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return startTime, nil
 }
