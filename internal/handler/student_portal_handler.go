@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/stemsi/exstem-backend/internal/config"
 	"github.com/stemsi/exstem-backend/internal/middleware"
 	"github.com/stemsi/exstem-backend/internal/model"
 	"github.com/stemsi/exstem-backend/internal/response"
@@ -16,16 +20,22 @@ import (
 type StudentPortalHandler struct {
 	sessionService *service.ExamSessionService
 	examService    *service.ExamService
+	studentService *service.StudentService
+	rdb            *redis.Client
 }
 
 // NewStudentPortalHandler creates a new StudentPortalHandler.
 func NewStudentPortalHandler(
 	sessionService *service.ExamSessionService,
 	examService *service.ExamService,
+	studentService *service.StudentService,
+	rdb *redis.Client,
 ) *StudentPortalHandler {
 	return &StudentPortalHandler{
 		sessionService: sessionService,
 		examService:    examService,
+		studentService: studentService,
+		rdb:            rdb,
 	}
 }
 
@@ -112,6 +122,26 @@ func (h *StudentPortalHandler) JoinExam(c *gin.Context) {
 		}
 		return
 	}
+
+	// Publish join event to monitor
+	go func() {
+		ctx := c.Request.Context()
+		studentName := "Siswa"
+		className := ""
+		if student, err := h.studentService.GetByID(ctx, claims.UserID); err == nil {
+			studentName = student.Name
+		}
+
+		event := map[string]interface{}{
+			"type":         "join",
+			"student_id":   claims.UserID,
+			"student_name": studentName,
+			"class_name":   className,
+			"message":      fmt.Sprintf("%s joined the exam", studentName),
+		}
+		data, _ := json.Marshal(event)
+		h.rdb.Publish(ctx, config.CacheKey.ExamMonitorChannel(examID.String()), data)
+	}()
 
 	response.Success(c, http.StatusOK, gin.H{"session": session})
 }

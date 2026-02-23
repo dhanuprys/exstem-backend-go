@@ -31,6 +31,8 @@ type Handlers struct {
 	Subject       *handler.SubjectHandler
 	Major         *handler.MajorHandler
 	Dashboard     *handler.DashboardHandler
+	Monitor       *handler.MonitorHandler
+	System        *handler.SystemHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -60,8 +62,15 @@ func SetupRouter(
 	// Apply request ID middleware globally so every response includes metadata.
 	router.Use(response.RequestIDMiddleware())
 
-	// Serve uploaded media files statically.
-	router.Static("/uploads", "./uploads")
+	// Apply brotli middleware globally.
+	router.Use(middleware.Brotli())
+
+	// Serve uploaded media files statically with aggressive caching (1 year).
+	uploadsGroup := router.Group("/uploads")
+	uploadsGroup.Use(middleware.CacheControl(31536000))
+	{
+		uploadsGroup.Static("/", "./uploads")
+	}
 
 	// Health check.
 	router.GET("/health", func(c *gin.Context) {
@@ -259,10 +268,19 @@ func SetupRouter(
 			middleware.RequirePermission(string(model.PermissionExamsPublish)),
 			handlers.Exam.RefreshExamCache,
 		)
+		adminAPI.GET("/exams/:id/monitor",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.Monitor.MonitorExamSSE,
+		)
 
 		// Dashboard
 		adminAPI.GET("/dashboard",
 			handlers.Dashboard.GetDashboardData, // Open to all admins
+		)
+
+		// System Monitoring
+		adminAPI.GET("/system/metrics",
+			handlers.System.SystemMetricsSSE, // Open to all admins
 		)
 
 		// Question management

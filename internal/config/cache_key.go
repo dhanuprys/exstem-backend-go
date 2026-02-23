@@ -60,4 +60,9 @@ func (r *CacheKeyStruct) StudentActiveExamKey(studentID int) string {
 	return fmt.Sprintf("student:%d:active_exam", studentID)
 }
 
+// ExamMonitorChannel returns the Redis PubSub channel name for an exam monitor
+func (r *CacheKeyStruct) ExamMonitorChannel(examID string) string {
+	return fmt.Sprintf("exam:%s:monitor", examID)
+}
+
 var CacheKey = NewCacheKeyStruct()

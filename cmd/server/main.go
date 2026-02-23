@@ -66,6 +66,7 @@ func main() {
 	subjectRepo := repository.NewSubjectRepository(pool)
 	majorRepo := repository.NewMajorRepository(pool)
 	dashboardRepo := repository.NewDashboardRepository(pool)
+	monitorRepo := repository.NewMonitorRepository(pool, rdb)
 
 	// ─── Initialize Services ──────────────────────────────────────────
 	authService := service.NewAuthService(cfg, rdb)
@@ -82,17 +83,18 @@ func main() {
 	subjectService := service.NewSubjectService(subjectRepo, log)
 	majorService := service.NewMajorService(majorRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo)
+	monitorService := service.NewMonitorService(monitorRepo)
 
 	// ─── Initialize Handlers ──────────────────────────────────────────
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(authService, studentService, adminService),
-		StudentPortal: handler.NewStudentPortalHandler(sessionService, examService),
+		StudentPortal: handler.NewStudentPortalHandler(sessionService, examService, studentService, rdb),
 		StudentMgmt:   handler.NewStudentManagementHandler(studentService, authService),
 		Admin:         handler.NewAdminHandler(authService),
 		Exam:          handler.NewExamHandler(examService, sessionService),
 		Question:      handler.NewQuestionHandler(questionService),
 		Media:         handler.NewMediaHandler(mediaService),
-		WS:            handler.NewWSHandler(rdb, examService, sessionService, log, cfg.AllowedOrigins),
+		WS:            handler.NewWSHandler(rdb, examService, sessionService, studentService, log, cfg.AllowedOrigins),
 		AdminUser:     handler.NewAdminUserHandler(adminUserService),
 		AdminRole:     handler.NewAdminRoleHandler(adminRoleService),
 		Class:         handler.NewClassHandler(classService),
@@ -100,6 +102,8 @@ func main() {
 		Subject:       handler.NewSubjectHandler(subjectService),
 		Major:         handler.NewMajorHandler(majorService),
 		Dashboard:     handler.NewDashboardHandler(dashboardService),
+		Monitor:       handler.NewMonitorHandler(rdb, examService, sessionService, monitorService, log),
+		System:        handler.NewSystemHandler(rdb, log),
 	}
 
 	// ─── Start Background Workers ─────────────────────────────────────

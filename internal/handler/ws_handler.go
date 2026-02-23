@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -42,15 +43,17 @@ type WSHandler struct {
 	rdb            *redis.Client
 	examService    *service.ExamService
 	sessionService *service.ExamSessionService
+	studentService *service.StudentService
 	log            zerolog.Logger
 	upgrader       websocket.Upgrader
 }
 
-func NewWSHandler(rdb *redis.Client, examService *service.ExamService, sessionService *service.ExamSessionService, log zerolog.Logger, allowedOrigins []string) *WSHandler {
+func NewWSHandler(rdb *redis.Client, examService *service.ExamService, sessionService *service.ExamSessionService, studentService *service.StudentService, log zerolog.Logger, allowedOrigins []string) *WSHandler {
 	return &WSHandler{
 		rdb:            rdb,
 		examService:    examService,
 		sessionService: sessionService,
+		studentService: studentService,
 		log:            log.With().Str("component", "ws_handler").Logger(),
 		upgrader:       buildUpgrader(allowedOrigins),
 	}
@@ -86,6 +89,11 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 		return
 	}
 	answersKey := config.CacheKey.StudentAnswersKey(examID.String(), studentID)
+
+	studentName := "Siswa"
+	if student, err := h.studentService.GetByID(c.Request.Context(), studentID); err == nil {
+		studentName = student.Name
+	}
 
 	wsLog := h.log.With().
 		Int("student_id", studentID).
@@ -123,7 +131,7 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 				ws.WriteError(conn, "invalid autosave format")
 				continue
 			}
-			h.handleAutosave(conn, answersKey, studentID, examID, &req)
+			h.handleAutosave(conn, answersKey, studentID, studentName, examID, &req)
 
 		case ws.ActionCheat:
 			var req ws.CheatRequest
@@ -132,10 +140,10 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 				wsLog.Error().Err(err).Msg("Cheat payload unmarshal failed")
 				continue
 			}
-			h.handleCheat(wsLog, studentID, examID, &req)
+			h.handleCheat(wsLog, studentID, studentName, examID, &req)
 
 		case ws.ActionSubmit:
-			h.handleSubmit(conn, wsLog, answersKey, studentID, examID)
+			h.handleSubmit(conn, wsLog, answersKey, studentID, studentName, examID)
 
 		case ws.ActionPing:
 			ws.WriteTyped(conn, ws.PongResponse{Event: ws.EventPong})
@@ -148,7 +156,7 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 }
 
 // handleCheat queues the cheat event for persistence.
-func (h *WSHandler) handleCheat(wsLog zerolog.Logger, studentID int, examID uuid.UUID, msg *ws.CheatRequest) {
+func (h *WSHandler) handleCheat(wsLog zerolog.Logger, studentID int, studentName string, examID uuid.UUID, msg *ws.CheatRequest) {
 	ctx := context.Background()
 
 	// We store the payload as json.RawMessage (bytes) so that when it goes
@@ -167,12 +175,19 @@ func (h *WSHandler) handleCheat(wsLog zerolog.Logger, studentID int, examID uuid
 		wsLog.Error().Err(err).Msg("Failed to queue cheat report")
 	}
 
+	h.publishMonitorEvent(examID, map[string]interface{}{
+		"type":         "cheat",
+		"student_id":   studentID,
+		"student_name": studentName,
+		"message":      fmt.Sprintf("%s is cheating", studentName),
+	})
+
 	// Security Best Practice: Do NOT acknowledge cheat events to the client.
 	// Silent logging prevents hackers from probing the detection system.
 }
 
 // handleAutosave saves a single answer to Redis.
-func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, studentID int, examID uuid.UUID, msg *ws.AutosaveRequest) {
+func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, studentID int, studentName string, examID uuid.UUID, msg *ws.AutosaveRequest) {
 	ctx := context.Background()
 
 	if msg.QID == "" {
@@ -202,6 +217,15 @@ func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, stud
 			return
 		}
 		h.rdb.RPush(ctx, config.WorkerKey.PersistAnswersQueue, payload)
+
+		h.publishMonitorEvent(examID, map[string]interface{}{
+			"type":         "autosave",
+			"student_id":   studentID,
+			"student_name": studentName,
+			"q_id":         msg.QID,
+			"message":      fmt.Sprintf("%s removed an answer", studentName),
+		})
+
 		ws.WriteTyped(conn, ws.AutosaveResponse{
 			Event:  ws.EventSuccess,
 			Status: "removed",
@@ -218,6 +242,14 @@ func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, stud
 
 	h.rdb.RPush(ctx, config.WorkerKey.PersistAnswersQueue, payload)
 
+	h.publishMonitorEvent(examID, map[string]interface{}{
+		"type":         "autosave",
+		"student_id":   studentID,
+		"student_name": studentName,
+		"q_id":         msg.QID,
+		"message":      fmt.Sprintf("%s updated an answer", studentName),
+	})
+
 	ws.WriteTyped(conn, ws.AutosaveResponse{
 		Event:  ws.EventSuccess,
 		Status: "saved",
@@ -225,7 +257,7 @@ func (h *WSHandler) handleAutosave(conn *websocket.Conn, answersKey string, stud
 }
 
 // handleSubmit grades the exam in RAM.
-func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, answersKey string, studentID int, examID uuid.UUID) {
+func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, answersKey string, studentID int, studentName string, examID uuid.UUID) {
 	ctx := context.Background()
 
 	// 1. Get correct answers (Cached in service layer usually)
@@ -277,6 +309,14 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 	})
 	h.rdb.RPush(ctx, config.WorkerKey.PersistScoresQueue, scorePayload)
 
+	h.publishMonitorEvent(examID, map[string]interface{}{
+		"type":         "submit",
+		"student_id":   studentID,
+		"student_name": studentName,
+		"score":        score,
+		"message":      fmt.Sprintf("%s submitted the exam", studentName),
+	})
+
 	wsLog.Info().Float64("score", score).Msg("Exam submitted")
 
 	ws.WriteTyped(conn, ws.GradedResponse{
@@ -284,4 +324,11 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 		Status: "completed",
 		Score:  score,
 	})
+}
+
+// publishMonitorEvent sends real-time updates to connected admin dashboards.
+func (h *WSHandler) publishMonitorEvent(examID uuid.UUID, event map[string]interface{}) {
+	data, _ := json.Marshal(event)
+	// Fire-and-forget, don't block the WS handler
+	go h.rdb.Publish(context.Background(), config.CacheKey.ExamMonitorChannel(examID.String()), data)
 }

@@ -92,17 +92,25 @@ func GetClaims(c *gin.Context) *service.Claims {
 	return claims
 }
 
-// extractAndValidateClaims parses the Authorization header and validates the token.
 func extractAndValidateClaims(c *gin.Context, authService *service.AuthService) (*service.Claims, error) {
+	tokenStr := ""
+
 	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return nil, fmt.Errorf("authorization header required")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+			tokenStr = parts[1]
+		}
 	}
 
-	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return nil, fmt.Errorf("invalid authorization format")
+	// Fallback for EventSource (SSE) which cannot send headers
+	if tokenStr == "" {
+		tokenStr = c.Query("token")
 	}
 
-	return authService.ValidateToken(parts[1])
+	if tokenStr == "" {
+		return nil, fmt.Errorf("authorization header or token query required")
+	}
+
+	return authService.ValidateToken(tokenStr)
 }
