@@ -17,7 +17,7 @@ import (
 func main() {
 	cfg := config.Load()
 	log := logger.Setup(cfg.LogLevel, cfg.LogFormat)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	pool, err := database.NewPostgresPool(ctx, cfg, log)
@@ -32,7 +32,9 @@ func main() {
 	classService := service.NewClassService(classRepo)
 	studentService := service.NewStudentService(studentRepo)
 
-	fmt.Println("=== Seeding 50 Students ===")
+	const totalStudents = 3000
+
+	fmt.Printf("=== Seeding %d Students ===\n", totalStudents)
 
 	gradeLevel := "XII"
 	majorCode := "TKJ"
@@ -41,7 +43,6 @@ func main() {
 	// Check if class exists
 	var classID int
 
-	// Fast way to find the class
 	var existingClass model.Class
 	err = pool.QueryRow(ctx, "SELECT id, grade_level, major_code, group_number FROM classes WHERE grade_level = $1 AND major_code = $2 AND group_number = $3", gradeLevel, majorCode, groupNumber).Scan(&existingClass.ID, &existingClass.GradeLevel, &existingClass.MajorCode, &existingClass.GroupNumber)
 
@@ -66,35 +67,42 @@ func main() {
 		fmt.Printf("Found existing class with ID: %d\n", classID)
 	}
 
-	names := []string{
-		"Budi Santoso", "Siti Aminah", "Andi Pratama", "Rina Wati", "Joko Susilo",
-		"Ayu Lestari", "Dodi Kusuma", "Eka Putri", "Fahri Hamzah", "Gita Savitri",
-		"Hendra Gunawan", "Ika Sari", "Jamal Mirdad", "Kiki Fatmala", "Lukman Hakim",
-		"Maya Septiana", "Nanda Pratama", "Oki Setiana", "Putri Dian", "Qori Maharani",
-		"Rafi Ahmad", "Siska Saraswati", "Toni Setiawan", "Umi Kalsum", "Vina Panduwinata",
-		"Wahyu Hidayat", "Xena Maharani", "Yudi Pratama", "Zaki Anwar", "Alifia Zahra",
-		"Bagas Saputra", "Citra Kirana", "Dimas Anggara", "Elisa Novita", "Fikri Maulana",
-		"Gali Rakasiwi", "Hani Hanifah", "Iqbal Ramadhan", "Jasmine Azzahra", "Kevin Sanjaya",
-		"Larasati Dewi", "Miko Pambudi", "Nia Ramadhani", "Oscar Lawalata", "Puput Melati",
-		"Reza Rahadian", "Sari Nila", "Tigor Siahaan", "Utari Maharani", "Vicky Prasetyo",
+	// 50 base first names and 14 last names = 700 unique combinations
+	firstNames := []string{
+		"Budi", "Siti", "Andi", "Rina", "Joko",
+		"Ayu", "Dodi", "Eka", "Fahri", "Gita",
+		"Hendra", "Ika", "Jamal", "Kiki", "Lukman",
+		"Maya", "Nanda", "Oki", "Putri", "Qori",
+		"Rafi", "Siska", "Toni", "Umi", "Vina",
+		"Wahyu", "Xena", "Yudi", "Zaki", "Alifia",
+		"Bagas", "Citra", "Dimas", "Elisa", "Fikri",
+		"Gali", "Hani", "Iqbal", "Jasmine", "Kevin",
+		"Laras", "Miko", "Nia", "Oscar", "Puput",
+		"Reza", "Sari", "Tigor", "Utari", "Vicky",
+	}
+
+	lastNames := []string{
+		"Santoso", "Aminah", "Pratama", "Wati", "Susilo",
+		"Lestari", "Kusuma", "Savitri", "Gunawan", "Hakim",
+		"Septiana", "Maharani", "Saraswati", "Hidayat",
 	}
 
 	successCount := 0
-	for i := 0; i < 50; i++ {
+	for i := 0; i < totalStudents; i++ {
 		nisn := fmt.Sprintf("user%d", i+1)
 		nis := fmt.Sprintf("%05d", i+1)
+		name := fmt.Sprintf("%s %s", firstNames[i%len(firstNames)], lastNames[i%len(lastNames)])
 
 		student := &model.Student{
 			NIS:          nis,
 			NISN:         nisn,
-			Name:         names[i],
-			Gender:       "Laki-laki", // Default for seed
-			Religion:     "Hindu",     // Default for seed
+			Name:         name,
+			Gender:       "Laki-laki",
+			Religion:     "Islam",
 			PasswordHash: "stemsijaya",
 			ClassID:      classID,
 		}
 
-		// If i % 2 == 1, assign as Perempuan
 		if i%2 != 0 {
 			student.Gender = "Perempuan"
 		}
@@ -104,11 +112,11 @@ func main() {
 			fmt.Printf("Error creating student %s (NISN: %s): %v\n", student.Name, student.NISN, err)
 		} else {
 			successCount++
-			if (i+1)%10 == 0 {
+			if (i+1)%100 == 0 {
 				fmt.Printf("Created %d students...\n", i+1)
 			}
 		}
 	}
 
-	fmt.Printf("\nSeed completed! Successfully added %d/50 students.\n", successCount)
+	fmt.Printf("\nSeed completed! Successfully added %d/%d students.\n", successCount, totalStudents)
 }

@@ -112,6 +112,9 @@ func (h *WSHandler) ExamWebSocketStream(c *gin.Context) {
 			continue
 		}
 
+		// Logging
+		wsLog.Info().Interface("messageaction", envelope.Action).Msg("Received message")
+
 		// 3. ROUTE TO SPECIFIC HANDLER based on Action
 		switch envelope.Action {
 		case ws.ActionAutosave:

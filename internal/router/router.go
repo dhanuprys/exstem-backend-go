@@ -75,11 +75,11 @@ func SetupRouter(
 	}
 
 	// Rate limiter for auth routes (30 requests per minute per IP).
-	authLimiter := middleware.NewRateLimiter(30, time.Minute)
+	// authLimiter := middleware.NewRateLimiter(30, time.Minute)
 
 	// ─── 1. Auth Group (Public, Rate Limited) ──────────────────────────
 	auth := router.Group("/api/v1/auth")
-	auth.Use(authLimiter.Middleware())
+	// auth.Use(authLimiter.Middleware())
 	{
 		auth.POST("/student/login", handlers.Auth.StudentLogin)
 		auth.POST("/admin/login", handlers.Auth.AdminLogin)
