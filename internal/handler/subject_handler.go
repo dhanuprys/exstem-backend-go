@@ -32,7 +32,7 @@ func (h *SubjectHandler) GetAll(c *gin.Context) {
 		subjects = []model.Subject{}
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"subjects": subjects})
+	response.Success(c, http.StatusOK, subjects)
 }
 
 // Create godoc
@@ -49,7 +49,7 @@ func (h *SubjectHandler) Create(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		return
 	}
-	response.Success(c, http.StatusCreated, gin.H{"subject": sub})
+	response.Success(c, http.StatusCreated, sub)
 }
 
 // Update godoc

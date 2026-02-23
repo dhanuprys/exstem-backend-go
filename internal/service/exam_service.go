@@ -18,8 +18,9 @@ import (
 // Domain Errors
 var (
 	ErrNotExamAuthor    = errors.New("not the author of this exam")
-	ErrNoQuestions      = errors.New("exam has no questions, cannot publish/start")
-	ErrExamNotDraft     = errors.New("exam status is not DRAFT")
+	ErrNoQuestions      = errors.New("no questions found for this exam")
+	ErrExamNotDraft     = errors.New("exam is not in draft status")
+	ErrDuplicateTarget  = errors.New("duplicate target rule")
 	ErrExamNotPublished = errors.New("exam status is not PUBLISHED")
 )
 
@@ -55,7 +56,7 @@ func (s *ExamService) GetByID(ctx context.Context, id uuid.UUID) (*model.Exam, e
 }
 
 // ListByAuthor retrieves exams, filtered by author if not superadmin.
-func (s *ExamService) ListByAuthor(ctx context.Context, authorID, page, perPage int) ([]model.Exam, *response.Pagination, error) {
+func (s *ExamService) ListByAuthor(ctx context.Context, page, perPage int) ([]model.Exam, *response.Pagination, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -69,7 +70,7 @@ func (s *ExamService) ListByAuthor(ctx context.Context, authorID, page, perPage 
 	limit := perPage
 	offset := (page - 1) * perPage
 
-	exams, total, err := s.examRepo.ListByAuthorPaginated(ctx, authorID, limit, offset)
+	exams, total, err := s.examRepo.ListByAuthorPaginated(ctx, limit, offset)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,15 +99,12 @@ func (s *ExamService) Create(ctx context.Context, exam *model.Exam) error {
 
 // Publish changes exam status to PUBLISHED and caches the payload + answer key in Redis.
 // This is the critical path that populates the "Fast Lane".
-func (s *ExamService) Publish(ctx context.Context, examID uuid.UUID, authorID int) error {
+func (s *ExamService) Publish(ctx context.Context, examID uuid.UUID) error {
 	exam, err := s.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return fmt.Errorf("get exam: %w", err)
 	}
 
-	if authorID != 0 && exam.AuthorID != authorID {
-		return ErrNotExamAuthor
-	}
 	if exam.Status != model.ExamStatusDraft {
 		return ErrExamNotDraft
 	}
@@ -127,15 +125,12 @@ func (s *ExamService) Publish(ctx context.Context, examID uuid.UUID, authorID in
 
 // RefreshCache re-caches the payload + answer key for a published exam.
 // Called when questions are updated after publish.
-func (s *ExamService) RefreshCache(ctx context.Context, examID uuid.UUID, authorID int) error {
+func (s *ExamService) RefreshCache(ctx context.Context, examID uuid.UUID) error {
 	exam, err := s.examRepo.GetByID(ctx, examID)
 	if err != nil {
 		return fmt.Errorf("get exam: %w", err)
 	}
 
-	if authorID != 0 && exam.AuthorID != authorID {
-		return ErrNotExamAuthor
-	}
 	if exam.Status != model.ExamStatusPublished {
 		return ErrExamNotPublished
 	}
@@ -193,7 +188,9 @@ func (s *ExamService) WarmExamCache(ctx context.Context, exam *model.Exam) error
 	pipe.Set(ctx, config.CacheKey.ExamPayloadKey(exam.ID.String()), payloadJSON, 0)
 	pipe.Del(ctx, config.CacheKey.ExamAnswerKey(exam.ID.String()))
 	pipe.HSet(ctx, config.CacheKey.ExamAnswerKey(exam.ID.String()), answerKey)
+	pipe.Set(ctx, config.CacheKey.ExamCheatRulesKey(exam.ID.String()), []byte(exam.CheatRules), 0)
 	pipe.Set(ctx, config.CacheKey.ExamDurationKey(exam.ID.String()), exam.DurationMinutes, 0)
+	pipe.Set(ctx, config.CacheKey.ExamRandomOrderKey(exam.ID.String()), exam.RandomizeQuestions, 0)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("cache to redis: %w", err)
@@ -273,7 +270,48 @@ func (s *ExamService) GetAnswerKey(ctx context.Context, examID uuid.UUID) (map[s
 
 // AddTargetRule adds a target rule to an exam.
 func (s *ExamService) AddTargetRule(ctx context.Context, rule *model.ExamTargetRule) error {
+	if err := s.checkDuplicateTargetRule(ctx, rule); err != nil {
+		return err
+	}
 	return s.targetRepo.Create(ctx, rule)
+}
+
+// UpdateTargetRule modifies an existing target rule for an exam.
+func (s *ExamService) UpdateTargetRule(ctx context.Context, rule *model.ExamTargetRule) error {
+	if err := s.checkDuplicateTargetRule(ctx, rule); err != nil {
+		return err
+	}
+	return s.targetRepo.Update(ctx, rule)
+}
+
+func (s *ExamService) checkDuplicateTargetRule(ctx context.Context, rule *model.ExamTargetRule) error {
+	existingRules, err := s.targetRepo.ListByExam(ctx, rule.ExamID)
+	if err != nil {
+		return err
+	}
+
+	for _, existing := range existingRules {
+		// If updating, ignore comparing against itself
+		if rule.ID != 0 && existing.ID == rule.ID {
+			continue
+		}
+
+		// Compare pointer values safely
+		classIDMatch := (existing.ClassID == nil && rule.ClassID == nil) || (existing.ClassID != nil && rule.ClassID != nil && *existing.ClassID == *rule.ClassID)
+		gradeMatch := (existing.GradeLevel == nil && rule.GradeLevel == nil) || (existing.GradeLevel != nil && rule.GradeLevel != nil && *existing.GradeLevel == *rule.GradeLevel)
+		majorMatch := (existing.MajorCode == nil && rule.MajorCode == nil) || (existing.MajorCode != nil && rule.MajorCode != nil && *existing.MajorCode == *rule.MajorCode)
+		religionMatch := (existing.Religion == nil && rule.Religion == nil) || (existing.Religion != nil && rule.Religion != nil && *existing.Religion == *rule.Religion)
+
+		if classIDMatch && gradeMatch && majorMatch && religionMatch {
+			return ErrDuplicateTarget
+		}
+	}
+	return nil
+}
+
+// DeleteTargetRule removes a target rule by ID for a specific exam.
+func (s *ExamService) DeleteTargetRule(ctx context.Context, ruleID int, examID uuid.UUID) error {
+	return s.targetRepo.Delete(ctx, ruleID, examID)
 }
 
 // GetTargetRules retrieves target rules for an exam.

@@ -19,8 +19,14 @@ const (
 	// PermissionExamsRead allows viewing exam lists and details.
 	PermissionExamsRead Permission = "exams:read"
 
-	// PermissionExamsWriteOwn allows creating exams and updating own exams.
-	PermissionExamsWriteOwn Permission = "exams:write_own"
+	// PermissionExamsWrite allows creating exams and updating own exams.
+	PermissionExamsWrite Permission = "exams:write"
+
+	// PermissionQBanksWriteOwn allows creating question banks and managing own question banks.
+	PermissionQBanksWriteOwn Permission = "qbanks:write_own"
+
+	// PermissionQBanksWriteAll allows creating question banks and managing all question banks.
+	PermissionQBanksWriteAll Permission = "qbanks:write_all"
 
 	// PermissionExamsPublish allows publishing exams to make them available to students.
 	PermissionExamsPublish Permission = "exams:publish"
@@ -66,7 +72,9 @@ var AllPermissions = []Permission{
 	PermissionStudentsWrite,
 	PermissionStudentsResetSession,
 	PermissionExamsRead,
-	PermissionExamsWriteOwn,
+	PermissionExamsWrite,
+	PermissionQBanksWriteOwn,
+	PermissionQBanksWriteAll,
 	PermissionExamsPublish,
 	PermissionAdminsRead,
 	PermissionAdminsWrite,

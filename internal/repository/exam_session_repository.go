@@ -36,10 +36,10 @@ func NewExamSessionRepository(pool *pgxpool.Pool) *ExamSessionRepository {
 func (r *ExamSessionRepository) GetByExamAndStudent(ctx context.Context, examID uuid.UUID, studentID int) (*model.ExamSession, error) {
 	s := &model.ExamSession{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, exam_id, student_id, started_at, finished_at, status, final_score
+		`SELECT id, exam_id, student_id, question_order, started_at, finished_at, status, final_score
 		 FROM exam_sessions
 		 WHERE exam_id = $1 AND student_id = $2`, examID, studentID,
-	).Scan(&s.ID, &s.ExamID, &s.StudentID, &s.StartedAt, &s.FinishedAt, &s.Status, &s.FinalScore)
+	).Scan(&s.ID, &s.ExamID, &s.StudentID, &s.QuestionOrder, &s.StartedAt, &s.FinishedAt, &s.Status, &s.FinalScore)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (r *ExamSessionRepository) Complete(ctx context.Context, examID uuid.UUID, 
 // ListByStudent retrieves all sessions for a given student.
 func (r *ExamSessionRepository) ListByStudent(ctx context.Context, studentID int) ([]model.ExamSession, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, exam_id, student_id, started_at, finished_at, status, final_score
+		`SELECT id, exam_id, student_id, question_order, started_at, finished_at, status, final_score
 		 FROM exam_sessions
 		 WHERE student_id = $1
 		 ORDER BY started_at DESC`, studentID,
@@ -84,7 +84,7 @@ func (r *ExamSessionRepository) ListByStudent(ctx context.Context, studentID int
 	var sessions []model.ExamSession
 	for rows.Next() {
 		var s model.ExamSession
-		if err := rows.Scan(&s.ID, &s.ExamID, &s.StudentID, &s.StartedAt, &s.FinishedAt, &s.Status, &s.FinalScore); err != nil {
+		if err := rows.Scan(&s.ID, &s.ExamID, &s.StudentID, &s.QuestionOrder, &s.StartedAt, &s.FinishedAt, &s.Status, &s.FinalScore); err != nil {
 			return nil, err
 		}
 		sessions = append(sessions, s)
@@ -181,4 +181,28 @@ func (r *ExamSessionRepository) GetStartTime(ctx context.Context, examID uuid.UU
 		return time.Time{}, err
 	}
 	return startTime, nil
+}
+
+// UpdateQuestionOrder updates the question_order array for a specific session.
+func (r *ExamSessionRepository) UpdateQuestionOrder(ctx context.Context, examID uuid.UUID, studentID int, req []string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE exam_sessions SET question_order = $1 WHERE exam_id = $2 AND student_id = $3`,
+		req, examID, studentID,
+	)
+	return err
+}
+
+// GetActiveExamID returns the exam ID of the student's currently active (IN_PROGRESS) session.
+// Returns nil if no active session exists.
+func (r *ExamSessionRepository) GetActiveExamID(ctx context.Context, studentID int) (*uuid.UUID, error) {
+	var examID uuid.UUID
+	err := r.pool.QueryRow(ctx,
+		`SELECT exam_id FROM exam_sessions
+		 WHERE student_id = $1 AND status = 'IN_PROGRESS'
+		 LIMIT 1`, studentID,
+	).Scan(&examID)
+	if err != nil {
+		return nil, err
+	}
+	return &examID, nil
 }

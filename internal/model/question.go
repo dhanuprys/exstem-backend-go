@@ -9,13 +9,12 @@ import (
 // Question represents a single exam question.
 type Question struct {
 	ID            uuid.UUID       `json:"id"`
-	ExamID        uuid.UUID       `json:"exam_id"`
+	QBankID       uuid.UUID       `json:"qbank_id"`
 	QuestionText  string          `json:"question_text"`
 	QuestionType  QuestionType    `json:"question_type"`
 	Options       json.RawMessage `json:"options"`
 	CorrectOption string          `json:"correct_option"`
 	OrderNum      int             `json:"order_num"`
-	ScoreValue    int             `json:"score_value"`
 }
 
 type QuestionType string
@@ -32,7 +31,6 @@ type AddQuestionRequest struct {
 	Options       json.RawMessage `json:"options" binding:"required"`
 	CorrectOption string          `json:"correct_option" binding:"required,max=10"`
 	OrderNum      int             `json:"order_num" binding:"min=0"`
-	ScoreValue    int             `json:"score_value" binding:"required,min=1"`
 }
 
 // ReplaceQuestionsRequest is the payload for bulk replacing questions.

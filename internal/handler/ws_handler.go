@@ -241,12 +241,23 @@ func (h *WSHandler) handleSubmit(conn *websocket.Conn, wsLog zerolog.Logger, ans
 		return
 	}
 
-	// 3. Grade it
+	// 3. Get Student's Shuffled Questions
+	orderedIDs, err := h.sessionService.GetShuffledQuestionIDs(ctx, examID, studentID)
+	if err != nil {
+		wsLog.Error().Err(err).Msg("Get student shuffled questions error")
+		ws.WriteError(conn, "failed to get question subset")
+		return
+	}
+
+	// 4. Grade it against their specific subset
 	correct := 0
-	total := len(answerKey)
-	for qID, correctAns := range answerKey {
-		if studentAns, ok := studentAnswers[qID]; ok && studentAns == correctAns {
-			correct++
+	total := len(orderedIDs)
+	for _, qID := range orderedIDs {
+		// Verify this question actually exists in the global answer key
+		if correctAns, exists := answerKey[qID]; exists {
+			if studentAns, answered := studentAnswers[qID]; answered && studentAns == correctAns {
+				correct++
+			}
 		}
 	}
 

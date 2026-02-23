@@ -65,6 +65,7 @@ func main() {
 	settingRepo := repository.NewSettingRepository(pool)
 	subjectRepo := repository.NewSubjectRepository(pool)
 	majorRepo := repository.NewMajorRepository(pool)
+	dashboardRepo := repository.NewDashboardRepository(pool)
 
 	// ─── Initialize Services ──────────────────────────────────────────
 	authService := service.NewAuthService(cfg, rdb)
@@ -80,6 +81,7 @@ func main() {
 	settingService := service.NewSettingService(settingRepo, log)
 	subjectService := service.NewSubjectService(subjectRepo, log)
 	majorService := service.NewMajorService(majorRepo)
+	dashboardService := service.NewDashboardService(dashboardRepo)
 
 	// ─── Initialize Handlers ──────────────────────────────────────────
 	handlers := &router.Handlers{
@@ -97,6 +99,7 @@ func main() {
 		Setting:       handler.NewSettingHandler(settingService),
 		Subject:       handler.NewSubjectHandler(subjectService),
 		Major:         handler.NewMajorHandler(majorService),
+		Dashboard:     handler.NewDashboardHandler(dashboardService),
 	}
 
 	// ─── Start Background Workers ─────────────────────────────────────
@@ -105,10 +108,12 @@ func main() {
 	autosaveWorker := worker.NewAutosaveWorker(pool, rdb, log)
 	scoringWorker := worker.NewScoringWorker(pool, rdb, log)
 	cheatWorker := worker.NewCheatWorker(pool, rdb, log)
+	questionOrderWorker := worker.NewQuestionOrderWorker(pool, rdb, log)
 
 	go autosaveWorker.Start(workerCtx)
 	go scoringWorker.Start(workerCtx)
 	go cheatWorker.Start(workerCtx)
+	go questionOrderWorker.Start(workerCtx)
 
 	// ─── Prewarm Redis Caches ─────────────────────────────────────────
 	// Load all published exams into Redis BEFORE accepting traffic.

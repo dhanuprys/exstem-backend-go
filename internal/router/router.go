@@ -30,6 +30,7 @@ type Handlers struct {
 	Setting       *handler.SettingHandler
 	Subject       *handler.SubjectHandler
 	Major         *handler.MajorHandler
+	Dashboard     *handler.DashboardHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -97,6 +98,7 @@ func SetupRouter(
 	)
 	{
 		studentAPI.GET("/lobby", handlers.StudentPortal.GetLobby)
+		studentAPI.GET("/active-session", handlers.StudentPortal.GetActiveSession)
 		studentAPI.POST("/exams/:exam_id/join", handlers.StudentPortal.JoinExam)
 		studentAPI.GET("/exams/:exam_id/paper", handlers.StudentPortal.GetExamPaper)
 		studentAPI.GET("/exams/:exam_id/state", handlers.StudentPortal.GetExamState)
@@ -218,7 +220,7 @@ func SetupRouter(
 			handlers.Exam.GetExamResults,
 		)
 		adminAPI.POST("/exams",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
 			handlers.Exam.CreateExam,
 		)
 		adminAPI.GET("/exams/:id",
@@ -226,11 +228,11 @@ func SetupRouter(
 			handlers.Exam.GetExam,
 		)
 		adminAPI.PUT("/exams/:id",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
 			handlers.Exam.UpdateExam,
 		)
 		adminAPI.DELETE("/exams/:id",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
 			handlers.Exam.DeleteExam,
 		)
 		adminAPI.POST("/exams/:id/publish",
@@ -242,25 +244,58 @@ func SetupRouter(
 			handlers.Exam.GetTargetRules,
 		)
 		adminAPI.POST("/exams/:id/target-rules",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
 			handlers.Exam.AddTargetRule,
+		)
+		adminAPI.PUT("/exams/:id/target-rules/:rule_id",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.Exam.UpdateTargetRule,
+		)
+		adminAPI.DELETE("/exams/:id/target-rules/:rule_id",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.Exam.DeleteTargetRule,
 		)
 		adminAPI.POST("/exams/:id/refresh-cache",
 			middleware.RequirePermission(string(model.PermissionExamsPublish)),
 			handlers.Exam.RefreshExamCache,
 		)
 
+		// Dashboard
+		adminAPI.GET("/dashboard",
+			handlers.Dashboard.GetDashboardData, // Open to all admins
+		)
+
 		// Question management
-		adminAPI.GET("/exams/:id/questions",
-			middleware.RequirePermission(string(model.PermissionExamsRead)),
+		adminAPI.GET("/qbanks",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
+			handlers.Question.ListQBanks,
+		)
+		adminAPI.GET("/qbanks/:id",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
+			handlers.Question.GetQBanks,
+		)
+		adminAPI.POST("/qbanks",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
+			handlers.Question.CreateQBanks,
+		)
+		adminAPI.PUT("/qbanks/:id",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
+			handlers.Question.UpdateQBanks,
+		)
+		adminAPI.DELETE("/qbanks/:id",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
+			handlers.Question.DeleteQBanks,
+		)
+		adminAPI.GET("/qbanks/:id/questions",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
 			handlers.Question.ListQuestions,
 		)
-		adminAPI.POST("/exams/:id/questions",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+		adminAPI.POST("/qbanks/:id/questions",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
 			handlers.Question.AddQuestion,
 		)
-		adminAPI.PUT("/exams/:id/questions",
-			middleware.RequirePermission(string(model.PermissionExamsWriteOwn)),
+		adminAPI.PUT("/qbanks/:id/questions",
+			middleware.RequireAnyPermission(string(model.PermissionQBanksWriteOwn), string(model.PermissionQBanksWriteAll)),
 			handlers.Question.ReplaceQuestions,
 		)
 

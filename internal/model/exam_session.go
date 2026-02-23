@@ -16,13 +16,14 @@ const (
 
 // ExamSession represents a student's exam attempt.
 type ExamSession struct {
-	ID         uuid.UUID     `json:"id"`
-	ExamID     uuid.UUID     `json:"exam_id"`
-	StudentID  int           `json:"student_id"`
-	StartedAt  time.Time     `json:"started_at"`
-	FinishedAt *time.Time    `json:"finished_at,omitempty"`
-	Status     SessionStatus `json:"status"`
-	FinalScore *float64      `json:"final_score,omitempty"`
+	ID            uuid.UUID     `json:"id"`
+	ExamID        uuid.UUID     `json:"exam_id"`
+	StudentID     int           `json:"student_id"`
+	QuestionOrder []string      `json:"question_order"`
+	StartedAt     time.Time     `json:"started_at"`
+	FinishedAt    *time.Time    `json:"finished_at,omitempty"`
+	Status        SessionStatus `json:"status"`
+	FinalScore    *float64      `json:"final_score,omitempty"`
 }
 
 // JoinExamRequest is the payload for a student joining an exam.
@@ -31,9 +32,10 @@ type JoinExamRequest struct {
 }
 
 type ExamSessionState struct {
-	SessionID        uuid.UUID         `json:"session_id"`
 	ExamID           uuid.UUID         `json:"exam_id"`
 	StudentID        int               `json:"student_id"`
+	IsRandomOrder    bool              `json:"is_random_order"`
+	CheatRules       map[string]bool   `json:"cheat_rules"`
 	AutosavedAnswers map[string]string `json:"autosaved_answers"`
 	RemainingTime    float64           `json:"remaining_time"`
 }

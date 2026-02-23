@@ -36,6 +36,7 @@ const (
 	ErrNotExamAuthor     ErrCode = "NOT_EXAM_AUTHOR"
 	ErrNoQuestions       ErrCode = "NO_QUESTIONS"
 	ErrExamNotDraft      ErrCode = "EXAM_NOT_DRAFT"
+	ErrDuplicateTarget   ErrCode = "DUPLICATE_TARGET_RULE"
 
 	// ─── Media ─────────────────────────────────────────────────────────
 	ErrFileRequired    ErrCode = "FILE_REQUIRED"
@@ -107,6 +108,8 @@ func GetMessage(code ErrCode) string {
 		return "Ujian ini tidak memiliki pertanyaan."
 	case ErrExamNotDraft:
 		return "Ujian ini tidak dalam status DRAFT."
+	case ErrDuplicateTarget:
+		return "Aturan target serupa sudah ada untuk ujian ini."
 
 	// ─── Media ─────────────────────────────────────────────────────────
 	case ErrFileRequired:

@@ -17,7 +17,12 @@ func (r *CacheKeyStruct) StudentSessionKey(studentID int) string {
 
 // StudentExamSessionStartKey returns the cache key for a student's exam session start
 func (r *CacheKeyStruct) StudentExamSessionStartKey(examID string, studentID int) string {
-	return fmt.Sprintf("exam:%d:student:%d:session_start", examID, studentID)
+	return fmt.Sprintf("student:%d:exam:%s:session_start", studentID, examID)
+}
+
+// StudentShuffledQuestionKey returns the cache key for a student's shuffled questions
+func (r *CacheKeyStruct) StudentShuffledQuestionKey(examID string, studentID int) string {
+	return fmt.Sprintf("student:%d:exam:%s:shuffled_questions", studentID, examID)
 }
 
 // StudentAnswersKey returns the cache key for a student's answers
@@ -38,6 +43,21 @@ func (r *CacheKeyStruct) ExamDurationKey(examID string) string {
 // ExamAnswerKey returns the cache key for an exam's answer
 func (r *CacheKeyStruct) ExamAnswerKey(examID string) string {
 	return fmt.Sprintf("exam:%s:key", examID)
+}
+
+// ExamCheatRulesKey returns the cache key for an exam's cheat rules
+func (r *CacheKeyStruct) ExamCheatRulesKey(examID string) string {
+	return fmt.Sprintf("exam:%s:cheat_rules", examID)
+}
+
+// ExamRandomOrderKey returns the cache key for an exam's random order
+func (r *CacheKeyStruct) ExamRandomOrderKey(examID string) string {
+	return fmt.Sprintf("exam:%s:random_order", examID)
+}
+
+// StudentActiveExamKey returns the cache key for a student's currently active exam
+func (r *CacheKeyStruct) StudentActiveExamKey(studentID int) string {
+	return fmt.Sprintf("student:%d:active_exam", studentID)
 }
 
 var CacheKey = NewCacheKeyStruct()

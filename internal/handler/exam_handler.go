@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stemsi/exstem-backend/internal/middleware"
 	"github.com/stemsi/exstem-backend/internal/model"
 	"github.com/stemsi/exstem-backend/internal/response"
@@ -54,22 +56,13 @@ func (h *ExamHandler) ListExams(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
 
-	// Check if the admin has write_all permission (superadmin).
-	authorFilter := claims.UserID
-	for _, p := range claims.Permissions {
-		if p == "exams:write_all" {
-			authorFilter = 0 // Show all exams
-			break
-		}
-	}
-
-	exams, pagination, err := h.examService.ListByAuthor(c.Request.Context(), authorFilter, page, perPage)
+	exams, pagination, err := h.examService.ListByAuthor(c.Request.Context(), page, perPage)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		return
 	}
 
-	response.SuccessWithPagination(c, http.StatusOK, gin.H{"exams": exams}, pagination)
+	response.SuccessWithPagination(c, http.StatusOK, exams, pagination)
 }
 
 // CreateExam godoc
@@ -91,10 +84,10 @@ func (h *ExamHandler) CreateExam(c *gin.Context) {
 	exam := &model.Exam{
 		Title:           req.Title,
 		AuthorID:        claims.UserID,
-		SubjectID:       req.SubjectID,
 		ScheduledStart:  req.ScheduledStart,
 		ScheduledEnd:    req.ScheduledEnd,
 		DurationMinutes: req.DurationMinutes,
+		CheatRules:      json.RawMessage(`{}`),
 		EntryToken:      generateToken(),
 	}
 
@@ -122,15 +115,7 @@ func (h *ExamHandler) PublishExam(c *gin.Context) {
 		return
 	}
 
-	authorFilter := claims.UserID
-	for _, p := range claims.Permissions {
-		if p == "exams:write_all" {
-			authorFilter = 0
-			break
-		}
-	}
-
-	if err := h.examService.Publish(c.Request.Context(), examID, authorFilter); err != nil {
+	if err := h.examService.Publish(c.Request.Context(), examID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrNotExamAuthor):
 			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
@@ -173,11 +158,92 @@ func (h *ExamHandler) AddTargetRule(c *gin.Context) {
 	}
 
 	if err := h.examService.AddTargetRule(c.Request.Context(), rule); err != nil {
-		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		switch {
+		case errors.Is(err, service.ErrDuplicateTarget):
+			response.Fail(c, http.StatusConflict, response.ErrDuplicateTarget)
+		default:
+			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		}
 		return
 	}
 
 	response.Success(c, http.StatusCreated, rule)
+}
+
+// UpdateTargetRule godoc
+// PUT /api/v1/admin/exams/:id/target-rules/:rule_id
+// Updates a specific target rule for an exam.
+func (h *ExamHandler) UpdateTargetRule(c *gin.Context) {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	ruleIDStr := c.Param("rule_id")
+	var ruleID int
+	if _, err := fmt.Sscan(ruleIDStr, &ruleID); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	var req model.AddTargetRuleRequest // Shape is same as Add
+	if fields := validator.Bind(c, &req); fields != nil {
+		response.FailWithFields(c, http.StatusBadRequest, response.ErrValidation, fields)
+		return
+	}
+
+	rule := &model.ExamTargetRule{
+		ID:         ruleID,
+		ExamID:     examID,
+		ClassID:    req.ClassID,
+		GradeLevel: req.GradeLevel,
+		MajorCode:  req.MajorCode,
+		Religion:   req.Religion,
+	}
+
+	if err := h.examService.UpdateTargetRule(c.Request.Context(), rule); err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			response.Fail(c, http.StatusNotFound, response.ErrNotFound)
+		case errors.Is(err, service.ErrDuplicateTarget):
+			response.Fail(c, http.StatusConflict, response.ErrDuplicateTarget)
+		default:
+			response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		}
+		return
+	}
+
+	response.Success(c, http.StatusOK, rule)
+}
+
+// DeleteTargetRule godoc
+// DELETE /api/v1/admin/exams/:id/target-rules/:rule_id
+// Deletes a specific target rule for an exam.
+func (h *ExamHandler) DeleteTargetRule(c *gin.Context) {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	ruleIDStr := c.Param("rule_id")
+	var ruleID int
+	if _, err := fmt.Sscan(ruleIDStr, &ruleID); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+		return
+	}
+
+	if err := h.examService.DeleteTargetRule(c.Request.Context(), ruleID, examID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Fail(c, http.StatusNotFound, response.ErrNotFound)
+			return
+		}
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "target rule deleted successfully"})
 }
 
 // GetTargetRules godoc
@@ -219,15 +285,7 @@ func (h *ExamHandler) RefreshExamCache(c *gin.Context) {
 		return
 	}
 
-	authorFilter := claims.UserID
-	for _, p := range claims.Permissions {
-		if p == "exams:write_all" {
-			authorFilter = 0
-			break
-		}
-	}
-
-	if err := h.examService.RefreshCache(c.Request.Context(), examID, authorFilter); err != nil {
+	if err := h.examService.RefreshCache(c.Request.Context(), examID); err != nil {
 		switch {
 		case errors.Is(err, service.ErrNotExamAuthor):
 			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
@@ -365,13 +423,6 @@ func (h *ExamHandler) UpdateExam(c *gin.Context) {
 	if req.Title != "" {
 		existing.Title = req.Title
 	}
-	if req.SubjectID != nil {
-		if *req.SubjectID == 0 {
-			existing.SubjectID = nil
-		} else {
-			existing.SubjectID = req.SubjectID
-		}
-	}
 	if req.ScheduledStart != nil {
 		existing.ScheduledStart = req.ScheduledStart
 	}
@@ -380,6 +431,18 @@ func (h *ExamHandler) UpdateExam(c *gin.Context) {
 	}
 	if req.DurationMinutes > 0 {
 		existing.DurationMinutes = req.DurationMinutes
+	}
+	if req.CheatRules != nil {
+		existing.CheatRules = req.CheatRules
+	}
+	if req.RandomizeQuestions != nil {
+		existing.RandomizeQuestions = *req.RandomizeQuestions
+	}
+	if req.QuestionCount != nil {
+		existing.QuestionCount = *req.QuestionCount
+	}
+	if req.QBankID != nil {
+		existing.QBankID = req.QBankID
 	}
 
 	authorFilter := claims.UserID

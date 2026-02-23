@@ -174,6 +174,9 @@ func (w *ScoringWorker) bulkClearAutosavedAnswers(ctx context.Context, batch []*
 	for _, p := range batch {
 		key := config.CacheKey.StudentAnswersKey(p.ExamID, p.StudentID)
 		pipe.Del(ctx, key)
+		// Clear active_exam so student is no longer session-locked
+		activeKey := config.CacheKey.StudentActiveExamKey(p.StudentID)
+		pipe.Del(ctx, activeKey)
 	}
 
 	_, _ = pipe.Exec(ctx)

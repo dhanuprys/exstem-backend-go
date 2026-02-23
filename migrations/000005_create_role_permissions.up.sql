@@ -18,8 +18,7 @@ SELECT r.id, p.id
 FROM roles r, permissions p
 WHERE r.name = 'Teacher'
   AND p.code IN (
-    'exams:read', 'exams:write_own', 'exams:publish',
-    'students:read', 'students:reset_session',
+    'qbanks:read', 'qbanks:write_own',
     'classes:read', 'media:upload'
   )
 ON CONFLICT DO NOTHING;

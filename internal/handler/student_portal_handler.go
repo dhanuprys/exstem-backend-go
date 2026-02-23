@@ -49,7 +49,31 @@ func (h *StudentPortalHandler) GetLobby(c *gin.Context) {
 		lobby = []service.LobbyExam{}
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"exams": lobby})
+	response.Success(c, http.StatusOK, lobby)
+}
+
+// GetActiveSession godoc
+// GET /api/v1/student/active-session
+// Returns the student's currently active exam session (Redis-backed, lightweight).
+func (h *StudentPortalHandler) GetActiveSession(c *gin.Context) {
+	claims := middleware.GetClaims(c)
+	if claims == nil {
+		response.Fail(c, http.StatusUnauthorized, response.ErrTokenRequired)
+		return
+	}
+
+	examID, err := h.sessionService.GetActiveExam(c.Request.Context(), claims.UserID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	if examID == nil {
+		response.Success(c, http.StatusOK, nil)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"exam_id": examID.String()})
 }
 
 // JoinExam godoc
@@ -121,6 +145,29 @@ func (h *StudentPortalHandler) GetExamPaper(c *gin.Context) {
 		response.Fail(c, http.StatusNotFound, response.ErrExamNotPublished)
 		return
 	}
+
+	// Fetch ordered questions for this student
+	orderedIDs, err := h.sessionService.GetShuffledQuestionIDs(c.Request.Context(), examID, claims.UserID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	// Filter and reorder questions
+	qMap := make(map[string]model.QuestionForStudent)
+	for _, q := range payload.Questions {
+		qMap[q.ID.String()] = q
+	}
+
+	orderedQuestions := make([]model.QuestionForStudent, 0, len(orderedIDs))
+	for i, id := range orderedIDs {
+		if q, ok := qMap[id]; ok {
+			q.OrderNum = i + 1 // Re-assign order number sequentially
+			orderedQuestions = append(orderedQuestions, q)
+		}
+	}
+
+	payload.Questions = orderedQuestions
 
 	response.Success(c, http.StatusOK, payload)
 }
