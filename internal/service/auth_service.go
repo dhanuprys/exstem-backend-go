@@ -56,9 +56,17 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 	return string(hash), err
 }
 
-// CheckPassword compares a plaintext password against a bcrypt hash.
+// CheckPassword compares a plaintext password against the stored bcrypt hash.
 func (s *AuthService) CheckPassword(hash, password string) error {
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		return ErrInvalidCredentials
+	}
+	return nil
+}
+
+// CheckStudentPassword compares a plaintext student password against the stored plaintext password.
+func (s *AuthService) CheckStudentPassword(storedPassword, password string) error {
+	if storedPassword != password {
 		return ErrInvalidCredentials
 	}
 	return nil

@@ -33,6 +33,8 @@ type Handlers struct {
 	Dashboard     *handler.DashboardHandler
 	Monitor       *handler.MonitorHandler
 	System        *handler.SystemHandler
+	Room          *handler.RoomHandler
+	ExamSchedule  *handler.ExamScheduleHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -149,6 +151,10 @@ func SetupRouter(
 		)
 
 		// Student management
+		adminAPI.GET("/students-cards",
+			middleware.RequirePermission(string(model.PermissionStudentsRead)),
+			handlers.StudentMgmt.ListStudentCards,
+		)
 		adminAPI.GET("/students",
 			middleware.RequirePermission(string(model.PermissionStudentsRead)),
 			handlers.StudentMgmt.ListStudents,
@@ -273,6 +279,28 @@ func SetupRouter(
 			handlers.Monitor.MonitorExamSSE,
 		)
 
+		// Exam Schedule & Distribution
+		adminAPI.POST("/exams/:id/distribute",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.ExamSchedule.AutoDistribute,
+		)
+		adminAPI.GET("/exams/:id/distribution",
+			middleware.RequirePermission(string(model.PermissionExamsRead)),
+			handlers.ExamSchedule.GetDistribution,
+		)
+		adminAPI.DELETE("/exams/:id/distribution",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.ExamSchedule.ClearDistribution,
+		)
+		adminAPI.PUT("/exam-schedules/:scheduleId/time",
+			middleware.RequirePermission(string(model.PermissionExamsWrite)),
+			handlers.ExamSchedule.UpdateScheduleTime,
+		)
+		adminAPI.GET("/exams/:id/distribution/export",
+			middleware.RequirePermission(string(model.PermissionExamsRead)),
+			handlers.ExamSchedule.ExportPresenceXLSX,
+		)
+
 		// Dashboard
 		adminAPI.GET("/dashboard",
 			handlers.Dashboard.GetDashboardData, // Open to all admins
@@ -340,6 +368,15 @@ func SetupRouter(
 			majorsGroup.POST("", middleware.RequirePermission(string(model.PermissionMajorWrite)), handlers.Major.Create)
 			majorsGroup.PUT("/:id", middleware.RequirePermission(string(model.PermissionMajorWrite)), handlers.Major.Update)
 			majorsGroup.DELETE("/:id", middleware.RequirePermission(string(model.PermissionMajorDelete)), handlers.Major.Delete)
+		}
+
+		// Rooms Routes
+		roomsGroup := adminAPI.Group("/rooms")
+		{
+			roomsGroup.GET("", middleware.RequirePermission(string(model.PermissionRoomsRead)), handlers.Room.ListRooms)
+			roomsGroup.POST("", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.Room.CreateRoom)
+			roomsGroup.PUT("/:id", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.Room.UpdateRoom)
+			roomsGroup.DELETE("/:id", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.Room.DeleteRoom)
 		}
 	}
 

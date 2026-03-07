@@ -63,6 +63,12 @@ const (
 
 	// PermissionMajorDelete allows deleting majors.
 	PermissionMajorDelete Permission = "major:delete"
+
+	// PermissionRoomsRead allows viewing rooms.
+	PermissionRoomsRead Permission = "rooms:read"
+
+	// PermissionRoomsWrite allows creating, updating, and deleting rooms.
+	PermissionRoomsWrite Permission = "rooms:write"
 )
 
 // AllPermissions is a slice of all available permissions.
@@ -87,4 +93,6 @@ var AllPermissions = []Permission{
 	PermissionMajorRead,
 	PermissionMajorWrite,
 	PermissionMajorDelete,
+	PermissionRoomsRead,
+	PermissionRoomsWrite,
 }

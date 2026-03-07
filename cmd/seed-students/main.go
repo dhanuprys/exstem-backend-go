@@ -94,13 +94,13 @@ func main() {
 		name := fmt.Sprintf("%s %s", firstNames[i%len(firstNames)], lastNames[i%len(lastNames)])
 
 		student := &model.Student{
-			NIS:          nis,
-			NISN:         nisn,
-			Name:         name,
-			Gender:       "Laki-laki",
-			Religion:     "Islam",
-			PasswordHash: "stemsijaya",
-			ClassID:      classID,
+			NIS:      nis,
+			NISN:     nisn,
+			Name:     name,
+			Gender:   "Laki-laki",
+			Religion: "Islam",
+			Password: "stemsijaya",
+			ClassID:  classID,
 		}
 
 		if i%2 != 0 {

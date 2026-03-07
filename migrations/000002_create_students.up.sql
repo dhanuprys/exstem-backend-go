@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS students (
     name VARCHAR(255) NOT NULL DEFAULT '',
     gender VARCHAR(20) NOT NULL,
     religion VARCHAR(50) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password VARCHAR(128) NOT NULL,
     class_id INT NOT NULL REFERENCES classes(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

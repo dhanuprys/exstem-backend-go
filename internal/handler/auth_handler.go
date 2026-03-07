@@ -127,7 +127,7 @@ func (h *AuthHandler) StudentLogin(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.CheckPassword(student.PasswordHash, req.Password); err != nil {
+	if err := h.authService.CheckStudentPassword(student.Password, req.Password); err != nil {
 		response.Fail(c, http.StatusUnauthorized, response.ErrInvalidCredentials)
 		return
 	}

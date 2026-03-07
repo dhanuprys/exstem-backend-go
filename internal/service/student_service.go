@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 
+	"github.com/stemsi/exstem-backend/internal/helper"
 	"github.com/stemsi/exstem-backend/internal/model"
 	"github.com/stemsi/exstem-backend/internal/repository"
 	"github.com/stemsi/exstem-backend/internal/response"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // StudentService handles student business logic.
@@ -65,13 +65,27 @@ func (s *StudentService) ListStudents(ctx context.Context, classID *int, page, p
 	return students, pagination, nil
 }
 
-// Create inserts a new student with a hashed password.
-func (s *StudentService) Create(ctx context.Context, student *model.Student) error {
-	hashed, err := bcrypt.GenerateFromPassword([]byte(student.PasswordHash), bcrypt.DefaultCost)
+// ListStudentCards retrieves students data optimized for ID cards.
+func (s *StudentService) ListStudentCards(ctx context.Context, classID *int, gradeLevel *string, majorCode *string) ([]model.StudentCardInfo, error) {
+	cards, err := s.studentRepo.ListStudentCards(ctx, classID, gradeLevel, majorCode)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	student.PasswordHash = string(hashed)
+	if cards == nil {
+		cards = []model.StudentCardInfo{}
+	}
+	return cards, nil
+}
+
+// Create inserts a new student with a raw password.
+func (s *StudentService) Create(ctx context.Context, student *model.Student) error {
+	if student.Password == "" {
+		pass, err := helper.GenerateStudentPassword()
+		if err != nil {
+			return err
+		}
+		student.Password = pass
+	}
 	return s.studentRepo.Create(ctx, student)
 }
 
@@ -83,12 +97,8 @@ func (s *StudentService) Update(ctx context.Context, student *model.Student, upd
 	}
 
 	// 2. Update password if requested
-	if updatePassword && student.PasswordHash != "" {
-		hashed, err := bcrypt.GenerateFromPassword([]byte(student.PasswordHash), bcrypt.DefaultCost)
-		if err != nil {
-			return err
-		}
-		return s.studentRepo.UpdatePassword(ctx, student.ID, string(hashed))
+	if updatePassword && student.Password != "" {
+		return s.studentRepo.UpdatePassword(ctx, student.ID, student.Password)
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"errors"
@@ -27,9 +28,9 @@ func NewStudentRepository(pool *pgxpool.Pool) *StudentRepository {
 func (r *StudentRepository) GetByID(ctx context.Context, id int) (*model.Student, error) {
 	s := &model.Student{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, nis, nisn, name, gender, religion, password_hash, class_id, created_at, updated_at
+		`SELECT id, nis, nisn, name, gender, religion, password, class_id, created_at, updated_at
 		 FROM students WHERE id = $1`, id,
-	).Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.PasswordHash, &s.ClassID, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.Password, &s.ClassID, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -40,9 +41,9 @@ func (r *StudentRepository) GetByID(ctx context.Context, id int) (*model.Student
 func (r *StudentRepository) GetByNISN(ctx context.Context, nisn string) (*model.Student, error) {
 	s := &model.Student{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, nis, nisn, name, gender, religion, password_hash, class_id, created_at, updated_at
+		`SELECT id, nis, nisn, name, gender, religion, password, class_id, created_at, updated_at
 		 FROM students WHERE nisn = $1`, nisn,
-	).Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.PasswordHash, &s.ClassID, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.Password, &s.ClassID, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func (r *StudentRepository) ListPaginated(ctx context.Context, classID *int, lim
 	}
 
 	// 2. Get paginated data
-	query := `SELECT id, nis, nisn, name, gender, religion, password_hash, class_id, created_at, updated_at FROM students`
+	query := `SELECT id, nis, nisn, name, gender, religion, password, class_id, created_at, updated_at FROM students`
 	var args []interface{}
 	argIdx := 1
 
@@ -87,7 +88,7 @@ func (r *StudentRepository) ListPaginated(ctx context.Context, classID *int, lim
 	var students []model.Student
 	for rows.Next() {
 		var s model.Student
-		if err := rows.Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.PasswordHash, &s.ClassID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.NIS, &s.NISN, &s.Name, &s.Gender, &s.Religion, &s.Password, &s.ClassID, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		students = append(students, s)
@@ -98,10 +99,10 @@ func (r *StudentRepository) ListPaginated(ctx context.Context, classID *int, lim
 // Create inserts a new student.
 func (r *StudentRepository) Create(ctx context.Context, s *model.Student) error {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO students (nis, nisn, name, gender, religion, password_hash, class_id)
+		`INSERT INTO students (nis, nisn, name, gender, religion, password, class_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at, updated_at`,
-		s.NIS, s.NISN, s.Name, s.Gender, s.Religion, s.PasswordHash, s.ClassID,
+		s.NIS, s.NISN, s.Name, s.Gender, s.Religion, s.Password, s.ClassID,
 	).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt)
 
 	if err != nil {
@@ -131,11 +132,11 @@ func (r *StudentRepository) Update(ctx context.Context, s *model.Student) error 
 	return nil
 }
 
-// UpdatePassword updates a student's password hash.
-func (r *StudentRepository) UpdatePassword(ctx context.Context, id int, passwordHash string) error {
+// UpdatePassword updates a student's password.
+func (r *StudentRepository) UpdatePassword(ctx context.Context, id int, password string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE students SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-		passwordHash, id,
+		`UPDATE students SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		password, id,
 	)
 	return err
 }
@@ -144,4 +145,54 @@ func (r *StudentRepository) UpdatePassword(ctx context.Context, id int, password
 func (r *StudentRepository) Delete(ctx context.Context, id int) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM students WHERE id = $1`, id)
 	return err
+}
+
+// ListStudentCards retrieves student data optimized for ID cards, with optional filters.
+func (r *StudentRepository) ListStudentCards(ctx context.Context, classID *int, gradeLevel *string, majorCode *string) ([]model.StudentCardInfo, error) {
+	query := `
+		SELECT 
+			s.id, s.nis, s.nisn, s.name, s.password,
+			c.grade_level || ' ' || c.major_code || ' ' || c.group_number::text as class_name,
+			c.grade_level, COALESCE(m.long_name, '') as major_name
+		FROM students s
+		JOIN classes c ON s.class_id = c.id
+		LEFT JOIN majors m ON c.major_code = m.code
+		WHERE 1=1
+	`
+	var args []interface{}
+	argIdx := 1
+
+	if classID != nil {
+		query += ` AND s.class_id = $` + strconv.Itoa(argIdx)
+		args = append(args, *classID)
+		argIdx++
+	}
+	if gradeLevel != nil {
+		query += ` AND c.grade_level = $` + strconv.Itoa(argIdx)
+		args = append(args, *gradeLevel)
+		argIdx++
+	}
+	if majorCode != nil {
+		query += ` AND c.major_code = $` + strconv.Itoa(argIdx)
+		args = append(args, *majorCode)
+		argIdx++
+	}
+
+	query += ` ORDER BY c.grade_level, c.major_code, c.group_number, s.name`
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list student cards: %w", err)
+	}
+	defer rows.Close()
+
+	var cards []model.StudentCardInfo
+	for rows.Next() {
+		var c model.StudentCardInfo
+		if err := rows.Scan(&c.ID, &c.NIS, &c.NISN, &c.Name, &c.Password, &c.ClassName, &c.GradeLevel, &c.MajorName); err != nil {
+			return nil, fmt.Errorf("scan student card row: %w", err)
+		}
+		cards = append(cards, c)
+	}
+	return cards, rows.Err()
 }

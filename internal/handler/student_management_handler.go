@@ -85,16 +85,15 @@ func (h *StudentManagementHandler) CreateStudent(c *gin.Context) {
 	}
 
 	student := &model.Student{
-		NIS:          req.NIS,
-		NISN:         req.NISN,
-		Name:         req.Name,
-		Gender:       req.Gender,
-		Religion:     req.Religion,
-		PasswordHash: req.Password,
-		ClassID:      req.ClassID,
+		NIS:      req.NIS,
+		NISN:     req.NISN,
+		Name:     req.Name,
+		Gender:   req.Gender,
+		Religion: req.Religion,
+		Password: req.Password,
+		ClassID:  req.ClassID,
 	}
 
-	// Service will hash the password.
 	if err := h.studentService.Create(c.Request.Context(), student); err != nil {
 		if errors.Is(err, repository.ErrDuplicateNISN) {
 			response.Fail(c, http.StatusConflict, response.ErrConflict)
@@ -124,14 +123,14 @@ func (h *StudentManagementHandler) UpdateStudent(c *gin.Context) {
 	}
 
 	student := &model.Student{
-		ID:           id,
-		NIS:          req.NIS,
-		NISN:         req.NISN,
-		Name:         req.Name,
-		Gender:       req.Gender,
-		Religion:     req.Religion,
-		PasswordHash: req.Password,
-		ClassID:      req.ClassID,
+		ID:       id,
+		NIS:      req.NIS,
+		NISN:     req.NISN,
+		Name:     req.Name,
+		Gender:   req.Gender,
+		Religion: req.Religion,
+		Password: req.Password, // If empty, service logic might ignore or handle it
+		ClassID:  req.ClassID,
 	}
 
 	updatePassword := req.Password != ""
@@ -167,4 +166,37 @@ func (h *StudentManagementHandler) DeleteStudent(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"message": "student deleted successfully"})
+}
+
+// ListStudentCards godoc
+// GET /api/v1/admin/students-cards
+// Retrieves student data for ID cards with optional class_id, grade_level, and major_code filters.
+func (h *StudentManagementHandler) ListStudentCards(c *gin.Context) {
+	var classID *int
+	if cidStr := c.Query("class_id"); cidStr != "" {
+		cid, err := strconv.Atoi(cidStr)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+			return
+		}
+		classID = &cid
+	}
+
+	var majorCode *string
+	if mcStr := c.Query("major_code"); mcStr != "" {
+		majorCode = &mcStr
+	}
+
+	var gradeLevel *string
+	if glStr := c.Query("grade_level"); glStr != "" {
+		gradeLevel = &glStr
+	}
+
+	cards, err := h.studentService.ListStudentCards(c.Request.Context(), classID, gradeLevel, majorCode)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"cards": cards})
 }

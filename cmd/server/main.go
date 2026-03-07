@@ -58,10 +58,12 @@ func main() {
 	studentRepo := repository.NewStudentRepository(pool)
 	adminRepo := repository.NewAdminRepository(pool)
 	roleRepo := repository.NewRoleRepository(pool)
+	roomRepo := repository.NewRoomRepository(pool)
 	examRepo := repository.NewExamRepository(pool)
 	questionRepo := repository.NewQuestionRepository(pool)
 	sessionRepo := repository.NewExamSessionRepository(pool)
 	targetRepo := repository.NewExamTargetRuleRepository(pool)
+	scheduleRepo := repository.NewExamScheduleRepository(pool)
 	settingRepo := repository.NewSettingRepository(pool)
 	subjectRepo := repository.NewSubjectRepository(pool)
 	majorRepo := repository.NewMajorRepository(pool)
@@ -82,6 +84,8 @@ func main() {
 	settingService := service.NewSettingService(settingRepo, log)
 	subjectService := service.NewSubjectService(subjectRepo, log)
 	majorService := service.NewMajorService(majorRepo)
+	roomService := service.NewRoomService(roomRepo)
+	scheduleService := service.NewExamScheduleService(scheduleRepo, roomRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo)
 	monitorService := service.NewMonitorService(monitorRepo)
 
@@ -101,6 +105,8 @@ func main() {
 		Setting:       handler.NewSettingHandler(settingService),
 		Subject:       handler.NewSubjectHandler(subjectService),
 		Major:         handler.NewMajorHandler(majorService),
+		Room:          handler.NewRoomHandler(roomService),
+		ExamSchedule:  handler.NewExamScheduleHandler(scheduleService, examService),
 		Dashboard:     handler.NewDashboardHandler(dashboardService),
 		Monitor:       handler.NewMonitorHandler(rdb, examService, sessionService, monitorService, log),
 		System:        handler.NewSystemHandler(rdb, log),

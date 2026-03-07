@@ -24,16 +24,28 @@ const (
 
 // Student represents a student user.
 type Student struct {
-	ID           int       `json:"id"`
-	NIS          string    `json:"nis"`
-	NISN         string    `json:"nisn"`
-	Name         string    `json:"name"`
-	Gender       Gender    `json:"gender"`
-	Religion     Religion  `json:"religion"`
-	PasswordHash string    `json:"-"`
-	ClassID      int       `json:"class_id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID        int       `json:"id"`
+	NIS       string    `json:"nis"`
+	NISN      string    `json:"nisn"`
+	Name      string    `json:"name"`
+	Gender    Gender    `json:"gender"`
+	Religion  Religion  `json:"religion"`
+	Password  string    `json:"-"`
+	ClassID   int       `json:"class_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// StudentCardInfo holds generic student data for printing ID cards.
+type StudentCardInfo struct {
+	ID         int    `json:"id"`
+	NIS        string `json:"nis"`
+	NISN       string `json:"nisn"`
+	Name       string `json:"name"`
+	Password   string `json:"password"`
+	ClassName  string `json:"class_name"`
+	GradeLevel string `json:"grade_level"`
+	MajorName  string `json:"major_name"`
 }
 
 // StudentLoginRequest is the payload for student authentication.

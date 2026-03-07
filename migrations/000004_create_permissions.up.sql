@@ -38,5 +38,8 @@ INSERT INTO permissions (code, description) VALUES
 
     ('major:read', 'View major list'),
     ('major:write', 'Define new majors or update existing ones'),
-    ('major:delete', 'Delete a major')
+    ('major:delete', 'Delete a major'),
+    
+    ('rooms:read', 'View exam rooms'),
+    ('rooms:write', 'Create, edit, and delete exam rooms')
 ON CONFLICT (code) DO NOTHING;
