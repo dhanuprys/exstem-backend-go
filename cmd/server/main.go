@@ -93,7 +93,7 @@ func main() {
 	handlers := &router.Handlers{
 		Auth:          handler.NewAuthHandler(authService, studentService, adminService),
 		StudentPortal: handler.NewStudentPortalHandler(sessionService, examService, studentService, rdb),
-		StudentMgmt:   handler.NewStudentManagementHandler(studentService, authService),
+		StudentMgmt:   handler.NewStudentManagementHandler(studentService, authService, settingService),
 		Admin:         handler.NewAdminHandler(authService),
 		Exam:          handler.NewExamHandler(examService, sessionService),
 		Question:      handler.NewQuestionHandler(questionService),

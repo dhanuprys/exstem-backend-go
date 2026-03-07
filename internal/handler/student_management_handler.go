@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -17,16 +18,19 @@ import (
 type StudentManagementHandler struct {
 	studentService *service.StudentService
 	authService    *service.AuthService
+	settingService *service.SettingService
 }
 
 // NewStudentManagementHandler creates a new StudentManagementHandler.
 func NewStudentManagementHandler(
 	studentService *service.StudentService,
 	authService *service.AuthService,
+	settingService *service.SettingService,
 ) *StudentManagementHandler {
 	return &StudentManagementHandler{
 		studentService: studentService,
 		authService:    authService,
+		settingService: settingService,
 	}
 }
 
@@ -199,4 +203,61 @@ func (h *StudentManagementHandler) ListStudentCards(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, gin.H{"cards": cards})
+}
+
+// ExportStudentCardsPDF godoc
+// GET /api/v1/admin/students-cards/pdf
+// Generates and streams an A4 PDF of student ID cards with optional filters.
+func (h *StudentManagementHandler) ExportStudentCardsPDF(c *gin.Context) {
+	var classID *int
+	if cidStr := c.Query("class_id"); cidStr != "" {
+		cid, err := strconv.Atoi(cidStr)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
+			return
+		}
+		classID = &cid
+	}
+
+	var majorCode *string
+	if mcStr := c.Query("major_code"); mcStr != "" {
+		majorCode = &mcStr
+	}
+
+	var gradeLevel *string
+	if glStr := c.Query("grade_level"); glStr != "" {
+		gradeLevel = &glStr
+	}
+
+	cards, err := h.studentService.ListStudentCards(c.Request.Context(), classID, gradeLevel, majorCode)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	if len(cards) == 0 {
+		response.Fail(c, http.StatusNotFound, response.ErrNotFound)
+		return
+	}
+
+	// Fetch school branding from settings (gracefully fall back to defaults).
+	ctx := c.Request.Context()
+	schoolName, _ := h.settingService.GetSettingByKey(ctx, "school_name")
+	schoolLogoURL, _ := h.settingService.GetSettingByKey(ctx, "school_logo_url")
+
+	school := service.SchoolInfo{
+		Name:    schoolName,
+		LogoURL: schoolLogoURL,
+	}
+
+	pdfBytes, err := service.GenerateStudentCardsPDF(cards, school)
+	if err != nil {
+		log.Printf("[ERROR] GenerateStudentCardsPDF failed: %v", err)
+		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", `attachment; filename="kartu-siswa.pdf"`)
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }

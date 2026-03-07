@@ -155,6 +155,10 @@ func SetupRouter(
 			middleware.RequirePermission(string(model.PermissionStudentsRead)),
 			handlers.StudentMgmt.ListStudentCards,
 		)
+		adminAPI.GET("/students-cards/pdf",
+			middleware.RequirePermission(string(model.PermissionStudentsRead)),
+			handlers.StudentMgmt.ExportStudentCardsPDF,
+		)
 		adminAPI.GET("/students",
 			middleware.RequirePermission(string(model.PermissionStudentsRead)),
 			handlers.StudentMgmt.ListStudents,
