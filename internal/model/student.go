@@ -30,10 +30,20 @@ type Student struct {
 	Name      string    `json:"name"`
 	Gender    Gender    `json:"gender"`
 	Religion  Religion  `json:"religion"`
-	Password  string    `json:"-"`
+	Password  string    `json:"password"`
 	ClassID   int       `json:"class_id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// StudentFilter holds optional filtering parameters for listing students.
+type StudentFilter struct {
+	Search      *string
+	Religion    *string
+	GradeLevel  *string
+	MajorCode   *string
+	GroupNumber *string
+	ClassID     *int
 }
 
 // StudentCardInfo holds generic student data for printing ID cards.
@@ -46,6 +56,8 @@ type StudentCardInfo struct {
 	ClassName  string `json:"class_name"`
 	GradeLevel string `json:"grade_level"`
 	MajorName  string `json:"major_name"`
+	RoomName   string `json:"room_name"`
+	SeatNumber int    `json:"seat_number"`
 }
 
 // StudentLoginRequest is the payload for student authentication.

@@ -36,35 +36,47 @@ func main() {
 
 	fmt.Printf("=== Seeding %d Students ===\n", totalStudents)
 
-	gradeLevel := "XII"
-	majorCode := "TKJ"
-	groupNumber := 2
+	classesToCreate := []struct {
+		Level string
+		Major string
+		Group int
+	}{
+		{"XII", "TKJ", 1},
+		{"XII", "TKJ", 2},
+		{"XII", "TKJ", 3},
+		{"X", "DKV", 1},
+		{"X", "DKV", 2},
+		{"X", "DKV", 3},
+		{"XI", "TE", 1},
+		{"XI", "TE", 2},
+		{"XII", "TSM", 1},
+		{"XII", "TSM", 2},
+	}
 
-	// Check if class exists
-	var classID int
+	var classIDs []int
 
-	var existingClass model.Class
-	err = pool.QueryRow(ctx, "SELECT id, grade_level, major_code, group_number FROM classes WHERE grade_level = $1 AND major_code = $2 AND group_number = $3", gradeLevel, majorCode, groupNumber).Scan(&existingClass.ID, &existingClass.GradeLevel, &existingClass.MajorCode, &existingClass.GroupNumber)
+	for _, c := range classesToCreate {
+		var existingClass model.Class
+		err = pool.QueryRow(ctx, "SELECT id FROM classes WHERE grade_level = $1 AND major_code = $2 AND group_number = $3", c.Level, c.Major, c.Group).Scan(&existingClass.ID)
 
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			fmt.Println("Class XII TKJ 2 not found. Creating it...")
-			newClass := &model.Class{
-				GradeLevel:  gradeLevel,
-				MajorCode:   majorCode,
-				GroupNumber: groupNumber,
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				fmt.Printf("Class %s %s %d not found. Creating it...\n", c.Level, c.Major, c.Group)
+				newClass := &model.Class{
+					GradeLevel:  c.Level,
+					MajorCode:   c.Major,
+					GroupNumber: c.Group,
+				}
+				if err := classService.Create(ctx, newClass); err != nil {
+					log.Fatal().Err(err).Msg("Failed to create class")
+				}
+				classIDs = append(classIDs, newClass.ID)
+			} else {
+				log.Fatal().Err(err).Msg("Failed to check existing class")
 			}
-			if err := classService.Create(ctx, newClass); err != nil {
-				log.Fatal().Err(err).Msg("Failed to create class")
-			}
-			classID = newClass.ID
-			fmt.Printf("Created class with ID: %d\n", classID)
 		} else {
-			log.Fatal().Err(err).Msg("Failed to check existing class")
+			classIDs = append(classIDs, existingClass.ID)
 		}
-	} else {
-		classID = existingClass.ID
-		fmt.Printf("Found existing class with ID: %d\n", classID)
 	}
 
 	// 50 base first names and 14 last names = 700 unique combinations
@@ -100,7 +112,7 @@ func main() {
 			Gender:   "Laki-laki",
 			Religion: "Islam",
 			Password: "stemsijaya",
-			ClassID:  classID,
+			ClassID:  classIDs[i%len(classIDs)],
 		}
 
 		if i%2 != 0 {

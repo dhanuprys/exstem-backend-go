@@ -29,8 +29,8 @@ func (s *StudentService) GetByID(ctx context.Context, id int) (*model.Student, e
 	return s.studentRepo.GetByID(ctx, id)
 }
 
-// ListStudents retrieves all students with pagination and optional class filter.
-func (s *StudentService) ListStudents(ctx context.Context, classID *int, page, perPage int) ([]model.Student, *response.Pagination, error) {
+// ListStudents retrieves all students with pagination and advanced filtering.
+func (s *StudentService) ListStudents(ctx context.Context, filter model.StudentFilter, page, perPage int) ([]model.Student, *response.Pagination, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -44,7 +44,7 @@ func (s *StudentService) ListStudents(ctx context.Context, classID *int, page, p
 	limit := perPage
 	offset := (page - 1) * perPage
 
-	students, total, err := s.studentRepo.ListPaginated(ctx, classID, limit, offset)
+	students, total, err := s.studentRepo.ListPaginated(ctx, filter, limit, offset)
 	if err != nil {
 		return nil, nil, err
 	}

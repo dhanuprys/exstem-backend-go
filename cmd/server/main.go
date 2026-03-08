@@ -63,7 +63,7 @@ func main() {
 	questionRepo := repository.NewQuestionRepository(pool)
 	sessionRepo := repository.NewExamSessionRepository(pool)
 	targetRepo := repository.NewExamTargetRuleRepository(pool)
-	scheduleRepo := repository.NewExamScheduleRepository(pool)
+	roomAssignmentRepo := repository.NewRoomAssignmentRepository(pool)
 	settingRepo := repository.NewSettingRepository(pool)
 	subjectRepo := repository.NewSubjectRepository(pool)
 	majorRepo := repository.NewMajorRepository(pool)
@@ -85,31 +85,31 @@ func main() {
 	subjectService := service.NewSubjectService(subjectRepo, log)
 	majorService := service.NewMajorService(majorRepo)
 	roomService := service.NewRoomService(roomRepo)
-	scheduleService := service.NewExamScheduleService(scheduleRepo, roomRepo)
+	roomAssignmentService := service.NewRoomAssignmentService(roomAssignmentRepo, roomRepo)
 	dashboardService := service.NewDashboardService(dashboardRepo)
 	monitorService := service.NewMonitorService(monitorRepo)
 
 	// ─── Initialize Handlers ──────────────────────────────────────────
 	handlers := &router.Handlers{
-		Auth:          handler.NewAuthHandler(authService, studentService, adminService),
-		StudentPortal: handler.NewStudentPortalHandler(sessionService, examService, studentService, rdb),
-		StudentMgmt:   handler.NewStudentManagementHandler(studentService, authService, settingService),
-		Admin:         handler.NewAdminHandler(authService),
-		Exam:          handler.NewExamHandler(examService, sessionService),
-		Question:      handler.NewQuestionHandler(questionService),
-		Media:         handler.NewMediaHandler(mediaService),
-		WS:            handler.NewWSHandler(rdb, examService, sessionService, studentService, log, cfg.AllowedOrigins),
-		AdminUser:     handler.NewAdminUserHandler(adminUserService),
-		AdminRole:     handler.NewAdminRoleHandler(adminRoleService),
-		Class:         handler.NewClassHandler(classService),
-		Setting:       handler.NewSettingHandler(settingService),
-		Subject:       handler.NewSubjectHandler(subjectService),
-		Major:         handler.NewMajorHandler(majorService),
-		Room:          handler.NewRoomHandler(roomService),
-		ExamSchedule:  handler.NewExamScheduleHandler(scheduleService, examService),
-		Dashboard:     handler.NewDashboardHandler(dashboardService),
-		Monitor:       handler.NewMonitorHandler(rdb, examService, sessionService, monitorService, log),
-		System:        handler.NewSystemHandler(rdb, log),
+		Auth:           handler.NewAuthHandler(authService, studentService, adminService),
+		StudentPortal:  handler.NewStudentPortalHandler(sessionService, examService, studentService, rdb),
+		StudentMgmt:    handler.NewStudentManagementHandler(studentService, authService, settingService),
+		Admin:          handler.NewAdminHandler(authService),
+		Exam:           handler.NewExamHandler(examService, sessionService),
+		Question:       handler.NewQuestionHandler(questionService),
+		Media:          handler.NewMediaHandler(mediaService),
+		WS:             handler.NewWSHandler(rdb, examService, sessionService, studentService, log, cfg.AllowedOrigins),
+		AdminUser:      handler.NewAdminUserHandler(adminUserService),
+		AdminRole:      handler.NewAdminRoleHandler(adminRoleService),
+		Class:          handler.NewClassHandler(classService),
+		Setting:        handler.NewSettingHandler(settingService),
+		Subject:        handler.NewSubjectHandler(subjectService),
+		Major:          handler.NewMajorHandler(majorService),
+		Room:           handler.NewRoomHandler(roomService),
+		RoomAssignment: handler.NewRoomAssignmentHandler(roomAssignmentService),
+		Dashboard:      handler.NewDashboardHandler(dashboardService),
+		Monitor:        handler.NewMonitorHandler(rdb, examService, sessionService, monitorService, log),
+		System:         handler.NewSystemHandler(rdb, log),
 	}
 
 	// ─── Start Background Workers ─────────────────────────────────────

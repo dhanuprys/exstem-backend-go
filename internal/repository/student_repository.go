@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"errors"
 
@@ -50,36 +51,63 @@ func (r *StudentRepository) GetByNISN(ctx context.Context, nisn string) (*model.
 	return s, nil
 }
 
-// ListPaginated retrieves students with pagination and optional class filter.
-func (r *StudentRepository) ListPaginated(ctx context.Context, classID *int, limit, offset int) ([]model.Student, int, error) {
-	// 1. Get total count
-	countQuery := `SELECT COUNT(*) FROM students`
-	var countArgs []interface{}
-	if classID != nil {
-		countQuery += ` WHERE class_id = $1`
-		countArgs = append(countArgs, *classID)
+// ListPaginated retrieves students with pagination and advanced filtering.
+func (r *StudentRepository) ListPaginated(ctx context.Context, filter model.StudentFilter, limit, offset int) ([]model.Student, int, error) {
+	// Base query components
+	baseSelect := `SELECT s.id, s.nis, s.nisn, s.name, s.gender, s.religion, s.password, s.class_id, s.created_at, s.updated_at FROM students s`
+	baseCount := `SELECT COUNT(s.id) FROM students s`
+	baseJoins := ` LEFT JOIN classes c ON s.class_id = c.id`
+
+	whereClauses := []string{"1=1"}
+	var args []interface{}
+	argIdx := 1
+
+	if filter.ClassID != nil {
+		whereClauses = append(whereClauses, `s.class_id = $`+strconv.Itoa(argIdx))
+		args = append(args, *filter.ClassID)
+		argIdx++
+	}
+	if filter.Search != nil && *filter.Search != "" {
+		searchTerm := "%" + *filter.Search + "%"
+		whereClauses = append(whereClauses, `(s.name ILIKE $`+strconv.Itoa(argIdx)+` OR s.nis ILIKE $`+strconv.Itoa(argIdx)+` OR s.nisn ILIKE $`+strconv.Itoa(argIdx)+`)`)
+		args = append(args, searchTerm)
+		argIdx++
+	}
+	if filter.Religion != nil && *filter.Religion != "" {
+		whereClauses = append(whereClauses, `s.religion = $`+strconv.Itoa(argIdx))
+		args = append(args, *filter.Religion)
+		argIdx++
+	}
+	if filter.GradeLevel != nil && *filter.GradeLevel != "" {
+		whereClauses = append(whereClauses, `c.grade_level = $`+strconv.Itoa(argIdx))
+		args = append(args, *filter.GradeLevel)
+		argIdx++
+	}
+	if filter.MajorCode != nil && *filter.MajorCode != "" {
+		whereClauses = append(whereClauses, `c.major_code = $`+strconv.Itoa(argIdx))
+		args = append(args, *filter.MajorCode)
+		argIdx++
+	}
+	if filter.GroupNumber != nil && *filter.GroupNumber != "" {
+		whereClauses = append(whereClauses, `c.group_number::text = $`+strconv.Itoa(argIdx))
+		args = append(args, *filter.GroupNumber)
+		argIdx++
 	}
 
+	whereStmt := " WHERE " + strings.Join(whereClauses, " AND ")
+
+	// 1. Get total count
+	countQuery := baseCount + baseJoins + whereStmt
 	var total int
-	if err := r.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	// 2. Get paginated data
-	query := `SELECT id, nis, nisn, name, gender, religion, password, class_id, created_at, updated_at FROM students`
-	var args []interface{}
-	argIdx := 1
+	query := baseSelect + baseJoins + whereStmt + ` ORDER BY s.name LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
 
-	if classID != nil {
-		query += ` WHERE class_id = $1`
-		args = append(args, *classID)
-		argIdx++
-	}
-
-	query += ` ORDER BY name LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
-	args = append(args, limit, offset)
-
-	rows, err := r.pool.Query(ctx, query, args...)
+	pagedArgs := append(args, limit, offset)
+	rows, err := r.pool.Query(ctx, query, pagedArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -153,10 +181,15 @@ func (r *StudentRepository) ListStudentCards(ctx context.Context, classID *int, 
 		SELECT 
 			s.id, s.nis, s.nisn, s.name, s.password,
 			c.grade_level || ' ' || c.major_code || ' ' || c.group_number::text as class_name,
-			c.grade_level, COALESCE(m.long_name, '') as major_name
+			c.grade_level, COALESCE(m.long_name, '') as major_name,
+			COALESCE(rm.name, '') as room_name,
+			COALESCE(sra.seat_number, 0) as seat_number
 		FROM students s
 		JOIN classes c ON s.class_id = c.id
 		LEFT JOIN majors m ON c.major_code = m.code
+		LEFT JOIN student_room_assignments sra ON s.id = sra.student_id
+		LEFT JOIN room_sessions rs ON sra.room_session_id = rs.id
+		LEFT JOIN rooms rm ON rs.room_id = rm.id
 		WHERE 1=1
 	`
 	var args []interface{}
@@ -189,7 +222,7 @@ func (r *StudentRepository) ListStudentCards(ctx context.Context, classID *int, 
 	var cards []model.StudentCardInfo
 	for rows.Next() {
 		var c model.StudentCardInfo
-		if err := rows.Scan(&c.ID, &c.NIS, &c.NISN, &c.Name, &c.Password, &c.ClassName, &c.GradeLevel, &c.MajorName); err != nil {
+		if err := rows.Scan(&c.ID, &c.NIS, &c.NISN, &c.Name, &c.Password, &c.ClassName, &c.GradeLevel, &c.MajorName, &c.RoomName, &c.SeatNumber); err != nil {
 			return nil, fmt.Errorf("scan student card row: %w", err)
 		}
 		cards = append(cards, c)

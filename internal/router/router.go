@@ -16,25 +16,25 @@ import (
 
 // Handlers groups all handler instances for route setup.
 type Handlers struct {
-	Auth          *handler.AuthHandler
-	StudentPortal *handler.StudentPortalHandler
-	StudentMgmt   *handler.StudentManagementHandler
-	Admin         *handler.AdminHandler
-	Exam          *handler.ExamHandler
-	Question      *handler.QuestionHandler
-	Media         *handler.MediaHandler
-	WS            *handler.WSHandler
-	AdminUser     *handler.AdminUserHandler
-	AdminRole     *handler.AdminRoleHandler
-	Class         *handler.ClassHandler
-	Setting       *handler.SettingHandler
-	Subject       *handler.SubjectHandler
-	Major         *handler.MajorHandler
-	Dashboard     *handler.DashboardHandler
-	Monitor       *handler.MonitorHandler
-	System        *handler.SystemHandler
-	Room          *handler.RoomHandler
-	ExamSchedule  *handler.ExamScheduleHandler
+	Auth           *handler.AuthHandler
+	StudentPortal  *handler.StudentPortalHandler
+	StudentMgmt    *handler.StudentManagementHandler
+	Admin          *handler.AdminHandler
+	Exam           *handler.ExamHandler
+	Question       *handler.QuestionHandler
+	Media          *handler.MediaHandler
+	WS             *handler.WSHandler
+	AdminUser      *handler.AdminUserHandler
+	AdminRole      *handler.AdminRoleHandler
+	Class          *handler.ClassHandler
+	Setting        *handler.SettingHandler
+	Subject        *handler.SubjectHandler
+	Major          *handler.MajorHandler
+	Dashboard      *handler.DashboardHandler
+	Monitor        *handler.MonitorHandler
+	System         *handler.SystemHandler
+	Room           *handler.RoomHandler
+	RoomAssignment *handler.RoomAssignmentHandler
 }
 
 // SetupRouter configures all Gin route groups with appropriate middlewares.
@@ -278,32 +278,21 @@ func SetupRouter(
 			middleware.RequirePermission(string(model.PermissionExamsPublish)),
 			handlers.Exam.RefreshExamCache,
 		)
+
 		adminAPI.GET("/exams/:id/monitor",
 			middleware.RequirePermission(string(model.PermissionExamsWrite)),
 			handlers.Monitor.MonitorExamSSE,
 		)
 
-		// Exam Schedule & Distribution
-		adminAPI.POST("/exams/:id/distribute",
-			middleware.RequirePermission(string(model.PermissionExamsWrite)),
-			handlers.ExamSchedule.AutoDistribute,
-		)
-		adminAPI.GET("/exams/:id/distribution",
-			middleware.RequirePermission(string(model.PermissionExamsRead)),
-			handlers.ExamSchedule.GetDistribution,
-		)
-		adminAPI.DELETE("/exams/:id/distribution",
-			middleware.RequirePermission(string(model.PermissionExamsWrite)),
-			handlers.ExamSchedule.ClearDistribution,
-		)
-		adminAPI.PUT("/exam-schedules/:scheduleId/time",
-			middleware.RequirePermission(string(model.PermissionExamsWrite)),
-			handlers.ExamSchedule.UpdateScheduleTime,
-		)
-		adminAPI.GET("/exams/:id/distribution/export",
-			middleware.RequirePermission(string(model.PermissionExamsRead)),
-			handlers.ExamSchedule.ExportPresenceXLSX,
-		)
+		// Room Assignments (standalone distribution)
+		assignmentsGroup := adminAPI.Group("/room-assignments")
+		{
+			assignmentsGroup.GET("", middleware.RequirePermission(string(model.PermissionRoomsRead)), handlers.RoomAssignment.GetDistribution)
+			assignmentsGroup.POST("/distribute", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.RoomAssignment.AutoDistribute)
+			assignmentsGroup.PUT("/sessions", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.RoomAssignment.UpdateSessionTimes)
+			assignmentsGroup.DELETE("", middleware.RequirePermission(string(model.PermissionRoomsWrite)), handlers.RoomAssignment.ClearDistribution)
+			assignmentsGroup.GET("/export", middleware.RequirePermission(string(model.PermissionRoomsRead)), handlers.RoomAssignment.ExportPresenceXLSX)
+		}
 
 		// Dashboard
 		adminAPI.GET("/dashboard",

@@ -36,22 +36,39 @@ func NewStudentManagementHandler(
 
 // ListStudents godoc
 // GET /api/v1/admin/students
-// Lists students with pagination, optionally filtered by class_id.
+// Lists students with pagination, optionally filtered by advanced options.
 func (h *StudentManagementHandler) ListStudents(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
 
-	var classID *int
+	filter := model.StudentFilter{}
+
 	if cidStr := c.Query("class_id"); cidStr != "" {
 		cid, err := strconv.Atoi(cidStr)
 		if err != nil {
 			response.Fail(c, http.StatusBadRequest, response.ErrInvalidID)
 			return
 		}
-		classID = &cid
+		filter.ClassID = &cid
 	}
 
-	students, pagination, err := h.studentService.ListStudents(c.Request.Context(), classID, page, perPage)
+	if search := c.Query("search"); search != "" {
+		filter.Search = &search
+	}
+	if rel := c.Query("religion"); rel != "" {
+		filter.Religion = &rel
+	}
+	if gl := c.Query("grade_level"); gl != "" {
+		filter.GradeLevel = &gl
+	}
+	if mc := c.Query("major_code"); mc != "" {
+		filter.MajorCode = &mc
+	}
+	if gn := c.Query("group_number"); gn != "" {
+		filter.GroupNumber = &gn
+	}
+
+	students, pagination, err := h.studentService.ListStudents(c.Request.Context(), filter, page, perPage)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		return

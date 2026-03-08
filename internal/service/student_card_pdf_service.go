@@ -38,7 +38,7 @@ const (
 
 	// Card chrome
 	pdfCardPadMM = 3.5  // inner padding (top of body / bottom of card)
-	pdfHeaderHMM = 12.5 // height of the coloured header bar
+	pdfHeaderHMM = 11.0 // height of the coloured header bar
 
 	// Body field sizing
 	pdfLabelHMM   = 4.0 // vertical space reserved for a small-caps label
@@ -46,8 +46,8 @@ const (
 	pdfLogoSizeMM = 7.5 // logo square side length inside the header
 
 	// Vertical gaps between body sections
-	pdfSectionGapMM    = 1.0  // gap after Name row → before Username/Class row
-	pdfBeforeDashGapMM = -0.5 // gap after Username/Class → dashed separator
+	pdfSectionGapMM    = 0.2  // gap after Name row → before Username/Class row
+	pdfBeforeDashGapMM = -1.5 // gap after Username/Class → dashed separator
 	pdfDashSepGapMM    = 4.0  // gap after dashed separator → Password row
 )
 
@@ -77,7 +77,7 @@ func mmToPt(mm float64) float64 { return mm * 2.83465 }
 // pdfCardHeightMM computes the total card height from the layout constants.
 func pdfCardHeightMM() float64 {
 	return pdfHeaderHMM +
-		(pdfCardPadMM*2 - 2.0) + // top + (trimmed) bottom padding
+		(pdfCardPadMM*2 + 3.5) + // top + (trimmed) bottom padding
 		pdfLabelHMM + pdfValueHMM + // Name
 		pdfSectionGapMM +
 		pdfLabelHMM + pdfValueHMM + // Username & Class
@@ -236,6 +236,15 @@ func drawStudentCard(pdf *gopdf.GoPdf, card model.StudentCardInfo, schoolName st
 	halfW := (contentW - mmToPt(pdfGutterMM)) / 2
 	drawFieldRow(pdf, x+pad, curY, halfW, "USERNAME (NISN)", card.NISN, 9)
 	drawFieldRow(pdf, x+pad+halfW+mmToPt(pdfGutterMM), curY, halfW, "KELAS", card.ClassName, 8)
+	curY += mmToPt(pdfLabelHMM + pdfValueHMM)
+	curY += mmToPt(pdfSectionGapMM)
+
+	// Row 3 — Room Assignment
+	roomText := "-"
+	if card.RoomName != "" {
+		roomText = fmt.Sprintf("%s / Kursi %d", card.RoomName, card.SeatNumber)
+	}
+	drawFieldRow(pdf, x+pad, curY, contentW, "RUANGAN / KURSI", roomText, 8.5)
 	curY += mmToPt(pdfLabelHMM + pdfValueHMM)
 	curY += mmToPt(pdfBeforeDashGapMM)
 
