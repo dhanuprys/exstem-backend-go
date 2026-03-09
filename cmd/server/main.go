@@ -85,7 +85,7 @@ func main() {
 	subjectService := service.NewSubjectService(subjectRepo, log)
 	majorService := service.NewMajorService(majorRepo)
 	roomService := service.NewRoomService(roomRepo)
-	roomAssignmentService := service.NewRoomAssignmentService(roomAssignmentRepo, roomRepo)
+	roomAssignmentService := service.NewRoomAssignmentService(roomAssignmentRepo, roomRepo, settingService)
 	dashboardService := service.NewDashboardService(dashboardRepo)
 	monitorService := service.NewMonitorService(monitorRepo)
 

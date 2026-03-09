@@ -5,7 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/stemsi/exstem-backend/internal/model"
@@ -17,13 +23,15 @@ import (
 type RoomAssignmentService struct {
 	assignmentRepo *repository.RoomAssignmentRepository
 	roomRepo       *repository.RoomRepository
+	settingService *SettingService
 }
 
 // NewRoomAssignmentService creates a new RoomAssignmentService.
-func NewRoomAssignmentService(assignmentRepo *repository.RoomAssignmentRepository, roomRepo *repository.RoomRepository) *RoomAssignmentService {
+func NewRoomAssignmentService(assignmentRepo *repository.RoomAssignmentRepository, roomRepo *repository.RoomRepository, settingService *SettingService) *RoomAssignmentService {
 	return &RoomAssignmentService{
 		assignmentRepo: assignmentRepo,
 		roomRepo:       roomRepo,
+		settingService: settingService,
 	}
 }
 
@@ -171,6 +179,43 @@ func (s *RoomAssignmentService) ExportPresenceXLSX(ctx context.Context, sessionO
 		return nil, errors.New("no distribution data available to export")
 	}
 
+	// Fetch letterhead setting.
+	letterheadURL, err := s.settingService.GetSettingByKey(ctx, "letterhead_url")
+	var letterheadBytes []byte
+	var letterheadExt string
+	var letterheadWidth, letterheadHeight float64
+	hasLetterhead := false
+
+	if err == nil && letterheadURL != "" {
+		// e.g., letterheadURL = "/uploads/media/kop.png"
+		basePath := strings.TrimPrefix(letterheadURL, "/uploads")
+		localPath := filepath.Join(".", "uploads", basePath)
+
+		imgData, err := os.ReadFile(localPath)
+		if err == nil {
+			letterheadBytes = imgData
+			letterheadExt = filepath.Ext(localPath)
+			if letterheadExt == "" {
+				letterheadExt = ".png"
+			}
+
+			imgCfg, _, err := image.DecodeConfig(bytes.NewReader(imgData))
+			if err == nil && imgCfg.Width > 0 && imgCfg.Height > 0 {
+				letterheadWidth = float64(imgCfg.Width)
+				letterheadHeight = float64(imgCfg.Height)
+			} else {
+				// Default fallback width if decode fails
+				letterheadWidth = 660.0
+				letterheadHeight = 100.0
+			}
+
+			hasLetterhead = true
+		} else {
+			// Log silently, proceed without letterhead
+			fmt.Println("Warning: Could not read letterhead file:", err)
+		}
+	}
+
 	f := excelize.NewFile()
 	defer f.Close()
 
@@ -243,23 +288,56 @@ func (s *RoomAssignmentService) ExportPresenceXLSX(ctx context.Context, sessionO
 			f.NewSheet(sheetName)
 		}
 
-		// Title block.
-		f.SetCellValue(sheetName, "A1", "DAFTAR HADIR UJIAN")
-		f.MergeCell(sheetName, "A1", "F1")
-		f.SetCellStyle(sheetName, "A1", "F1", headerStyle)
+		baseRow := 1
+		if hasLetterhead {
+			// In Excelize, merged columns A-F with sizes (4,8,39,15,12,12) evaluate to exactly 583 pixels wide internally based on EMU calculations.
+			targetWidth := 583.0
 
-		f.SetCellValue(sheetName, "A2", fmt.Sprintf("Sesi: %d", sess.SessionNumber))
-		f.SetCellValue(sheetName, "A3", fmt.Sprintf("Ruangan: %s (Kapasitas: %d)", sess.RoomName, sess.RoomCapacity))
+			// Compute the exact proportional height in pixels for a 583px wide image
+			scaledHeightPixels := targetWidth * (letterheadHeight / letterheadWidth)
+
+			// Excel row heights are specified in "points", where 1 pixel ≈ 0.75 points
+			rowHeightPoints := scaledHeightPixels * 0.75
+
+			// Merge cells A1 to F1 FIRST so AutoFit maps to the entire table width precisely
+			f.MergeCell(sheetName, "A1", "F1")
+
+			// Dynamically stretch Row 1 down to perfectly fit the scaled image height natively, preventing underlaps.
+			f.SetRowHeight(sheetName, 1, rowHeightPoints)
+
+			// Relinquish absolute dimension control back to AutoFit which scales width flawlessly avoiding resolution overlaps.
+			imgFmt := &excelize.GraphicOptions{
+				AutoFit:         true,
+				LockAspectRatio: true,
+				ScaleY:          1.25,
+			}
+			f.AddPictureFromBytes(sheetName, "A1", &excelize.Picture{
+				Extension: letterheadExt,
+				File:      letterheadBytes,
+				Format:    imgFmt,
+			})
+
+			// Leave exactly two blank rows after the letterhead (Row 2, Row 3)
+			baseRow = 2 // no extra blank space
+		}
+
+		// Title block.
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", baseRow), "DAFTAR HADIR UJIAN")
+		f.MergeCell(sheetName, fmt.Sprintf("A%d", baseRow), fmt.Sprintf("F%d", baseRow))
+		f.SetCellStyle(sheetName, fmt.Sprintf("A%d", baseRow), fmt.Sprintf("F%d", baseRow), headerStyle)
+
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", baseRow+1), fmt.Sprintf("Sesi: %d", sess.SessionNumber))
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", baseRow+2), fmt.Sprintf("Ruangan: %s (Kapasitas: %d)", sess.RoomName, sess.RoomCapacity))
 
 		// Table headers.
-		f.SetCellValue(sheetName, "A5", "No")
-		f.SetCellValue(sheetName, "B5", "NIS")
-		f.SetCellValue(sheetName, "C5", "Nama Siswa")
-		f.SetCellValue(sheetName, "D5", "Kelas")
-		f.SetCellValue(sheetName, "E5", "Tanda Tangan")
-		f.SetCellValue(sheetName, "F5", "")
-		f.MergeCell(sheetName, "E5", "F5")
-		f.SetCellStyle(sheetName, "A5", "F5", tableHeaderStyle)
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", baseRow+4), "No")
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", baseRow+4), "NIS")
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", baseRow+4), "Nama Siswa")
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", baseRow+4), "Kelas")
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", baseRow+4), "Tanda Tangan")
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", baseRow+4), "")
+		f.MergeCell(sheetName, fmt.Sprintf("E%d", baseRow+4), fmt.Sprintf("F%d", baseRow+4))
+		f.SetCellStyle(sheetName, fmt.Sprintf("A%d", baseRow+4), fmt.Sprintf("F%d", baseRow+4), tableHeaderStyle)
 
 		// Column widths.
 		f.SetColWidth(sheetName, "A", "A", 4)
@@ -269,13 +347,13 @@ func (s *RoomAssignmentService) ExportPresenceXLSX(ctx context.Context, sessionO
 		f.SetColWidth(sheetName, "E", "E", 12)
 		f.SetColWidth(sheetName, "F", "F", 12)
 
-		row := 6
+		row := baseRow + 5
 		students := assignmentsBySession[sess.ID]
 		for i, a := range students {
 			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), a.SeatNumber)
 			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), a.StudentNIS)
 			f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), a.StudentName)
-			f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), a.ClassName)
+			f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), fmt.Sprintf("  %s", a.ClassName))
 
 			// Signature columns (odd/even staggered).
 			f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "")
@@ -294,7 +372,7 @@ func (s *RoomAssignmentService) ExportPresenceXLSX(ctx context.Context, sessionO
 			f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("D%d", row), cellStyle)
 			f.SetCellStyle(sheetName, fmt.Sprintf("E%d", row), fmt.Sprintf("F%d", row), signatureStyle)
 
-			f.SetRowHeight(sheetName, row, 30)
+			f.SetRowHeight(sheetName, row, 18)
 			row++
 		}
 
