@@ -1,0 +1,161 @@
+name: Build and Deploy Docker Image with Version Tag
+
+on:
+  push:
+    tags:
+      - "v*" # This triggers the action for any tag like v1.0.0, v2.0.0, etc.
+
+env:
+  DOCKER_IMAGE: ghcr.io/dhanuprys/exstem-be # Your GHCR organization image
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo ${{ secrets.GHCR_PAT }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker Image
+        run: |
+          # Use the Git tag as the version tag for Docker image
+          VERSION_TAG=${GITHUB_REF#refs/tags/}  # Extract tag name without refs/tags/
+          echo "Building Docker image with version: $VERSION_TAG"
+
+          # Build and tag the image with the version tag
+          docker build -t $DOCKER_IMAGE:$VERSION_TAG .
+
+          # Optionally, tag as latest if desired
+          docker tag $DOCKER_IMAGE:$VERSION_TAG $DOCKER_IMAGE:latest
+
+      - name: Push Docker Image
+        run: |
+          VERSION_TAG=${GITHUB_REF#refs/tags/}  # Extract tag name
+          # Push the tagged image to GHCR
+          docker push $DOCKER_IMAGE:$VERSION_TAG
+
+          # Push the 'latest' tag (optional)
+          docker push $DOCKER_IMAGE:latest
+
+      - name: Get latest commit message
+        id: commit_message
+        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=%s)" >> $GITHUB_ENV
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+
+      - name: Notify Discord on success
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ env.VERSION }}
+          COMMITTER: ${{ github.actor }}
+        run: |
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"✅ Build Success: $JOB_NAME\",
+              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
+              \"color\": 3066993
+            }]
+          }" \
+          "$DISCORD_WEBHOOK_URL"
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ env.VERSION }}
+          COMMITTER: ${{ github.actor }}
+        run: |
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"❌ Build Failed: $JOB_NAME\",
+              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
+              \"color\": 15158332
+            }]
+          }" \
+          "$DISCORD_WEBHOOK_URL"
+
+  deploy:
+    needs: build-and-push
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Deployment script
+            cd /opt/app/sso-amerta
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GHCR_PAT }}
+            docker compose pull
+            docker compose up app worker --force-recreate -d
+
+      - name: Get latest commit message
+        id: commit_message
+        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=%s)" >> $GITHUB_ENV
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+
+      - name: Notify Discord on success
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ env.VERSION }}
+          COMMITTER: ${{ github.actor }}
+        run: |
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"✅ Deploy Success: $JOB_NAME\",
+              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
+              \"color\": 3066993
+            }]
+          }" \
+          "$DISCORD_WEBHOOK_URL"
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ env.VERSION }}
+          COMMITTER: ${{ github.actor }}
+        run: |
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"❌ Deploy Failed: $JOB_NAME\",
+              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
+              \"color\": 15158332
+            }]
+          }" \
+          "$DISCORD_WEBHOOK_URL"
