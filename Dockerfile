@@ -13,26 +13,31 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build with go_json tag for fast serialization
-RUN CGO_ENABLED=0 GOOS=linux go build -tags go_json -o /bin/server ./cmd/server
+# Build all binaries inside cmd/ directory (server, migrate, create-admin, etc) into /out/
+RUN CGO_ENABLED=0 GOOS=linux go build -tags go_json -o /out/ ./cmd/...
 
 # Runtime stage
 FROM alpine:3.19
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Install runtime dependencies including NGINX proxy
+RUN apk add --no-cache ca-certificates tzdata nginx
 
-# Copy binary from builder
-COPY --from=builder /bin/server /app/server
+# Copy all compiled binaries from builder directly into system PATH
+COPY --from=builder /out/ /usr/local/bin/
 
 # Copy migrations for convenience
 COPY --from=builder /app/migrations /app/migrations
 
-# Create uploads directory
+# Create uploads directory and inject NGINX configs + startup scripts
 RUN mkdir -p /app/uploads
+COPY nginx.conf /app/nginx.conf
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
+# The container explicitly exposes 8080 (handled natively by NGINX internally)
 EXPOSE 8080
 
-CMD ["/app/server"]
+# Sequence NGINX reverse proxy orchestrating Go binary natively
+CMD ["/app/start.sh"]

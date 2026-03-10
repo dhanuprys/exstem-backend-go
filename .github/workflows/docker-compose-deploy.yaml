@@ -43,54 +43,6 @@ jobs:
           # Push the 'latest' tag (optional)
           docker push $DOCKER_IMAGE:latest
 
-      - name: Get latest commit message
-        id: commit_message
-        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=%s)" >> $GITHUB_ENV
-
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
-
-      - name: Notify Discord on success
-        if: success()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ env.VERSION }}
-          COMMITTER: ${{ github.actor }}
-        run: |
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{
-            \"embeds\": [{
-              \"title\": \"✅ Build Success: $JOB_NAME\",
-              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
-              \"color\": 3066993
-            }]
-          }" \
-          "$DISCORD_WEBHOOK_URL"
-
-      - name: Notify Discord on failure
-        if: failure()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ env.VERSION }}
-          COMMITTER: ${{ github.actor }}
-        run: |
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{
-            \"embeds\": [{
-              \"title\": \"❌ Build Failed: $JOB_NAME\",
-              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
-              \"color\": 15158332
-            }]
-          }" \
-          "$DISCORD_WEBHOOK_URL"
-
   deploy:
     needs: build-and-push
     runs-on: self-hosted
@@ -111,51 +63,3 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GHCR_PAT }}
             docker compose pull
             docker compose up app worker --force-recreate -d
-
-      - name: Get latest commit message
-        id: commit_message
-        run: echo "COMMIT_MESSAGE=$(git log -1 --pretty=%s)" >> $GITHUB_ENV
-
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
-
-      - name: Notify Discord on success
-        if: success()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ env.VERSION }}
-          COMMITTER: ${{ github.actor }}
-        run: |
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{
-            \"embeds\": [{
-              \"title\": \"✅ Deploy Success: $JOB_NAME\",
-              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
-              \"color\": 3066993
-            }]
-          }" \
-          "$DISCORD_WEBHOOK_URL"
-
-      - name: Notify Discord on failure
-        if: failure()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          JOB_NAME: ${{ env.COMMIT_MESSAGE }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ env.VERSION }}
-          COMMITTER: ${{ github.actor }}
-        run: |
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{
-            \"embeds\": [{
-              \"title\": \"❌ Deploy Failed: $JOB_NAME\",
-              \"description\": \"📦 Repository: **$REPO**\\n🔖 Version: **$VERSION**\\n👤 Triggered by: **$COMMITTER**\",
-              \"color\": 15158332
-            }]
-          }" \
-          "$DISCORD_WEBHOOK_URL"
