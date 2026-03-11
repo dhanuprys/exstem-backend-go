@@ -5,6 +5,7 @@ import "time"
 // Admin represents an admin/teacher user.
 type Admin struct {
 	ID           int       `json:"id"`
+	Username     string    `json:"username"`
 	Email        string    `json:"email"`
 	Name         string    `json:"name"`
 	PasswordHash string    `json:"-"`
@@ -16,8 +17,8 @@ type Admin struct {
 
 // AdminLoginRequest is the payload for admin authentication.
 type AdminLoginRequest struct {
-	Email    string `json:"email" binding:"required,email,max=255"`
-	Password string `json:"password" binding:"required,min=6,max=128"`
+	Identifier string `json:"identifier" binding:"required,max=255"`
+	Password   string `json:"password" binding:"required,min=6,max=128"`
 }
 
 // AdminLoginResponse is returned after successful admin login.

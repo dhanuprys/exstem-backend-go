@@ -23,6 +23,11 @@ func (s *AdminService) GetByEmail(ctx context.Context, email string) (*model.Adm
 	return s.adminRepo.GetByEmail(ctx, email)
 }
 
+// GetByIdentifier retrieves an admin by generic email or username.
+func (s *AdminService) GetByIdentifier(ctx context.Context, identifier string) (*model.Admin, error) {
+	return s.adminRepo.GetByIdentifier(ctx, identifier)
+}
+
 // GetByID retrieves an admin by ID.
 func (s *AdminService) GetByID(ctx context.Context, id int) (*model.Admin, error) {
 	return s.adminRepo.GetByID(ctx, id)

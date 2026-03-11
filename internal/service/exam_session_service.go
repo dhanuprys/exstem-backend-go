@@ -55,8 +55,8 @@ const (
 type LobbyExam struct {
 	ID              uuid.UUID            `json:"id"`
 	Title           string               `json:"title"`
-	ScheduledStart  *time.Time           `json:"scheduled_start,omitempty"`
-	ScheduledEnd    *time.Time           `json:"scheduled_end,omitempty"`
+	ScheduledStart  *model.LocalTime     `json:"scheduled_start,omitempty"`
+	ScheduledEnd    *model.LocalTime     `json:"scheduled_end,omitempty"`
 	DurationMinutes int                  `json:"duration_minutes"`
 	Status          model.ExamStatus     `json:"status"`
 	CreatedAt       time.Time            `json:"created_at"`
@@ -121,11 +121,11 @@ func (s *ExamSessionService) GetLobby(ctx context.Context, studentID, classID in
 			}
 		} else {
 			// No session yet. Check schedule.
-			if exam.ScheduledEnd != nil && now.After(*exam.ScheduledEnd) {
+			if exam.ScheduledEnd != nil && now.After(exam.ScheduledEnd.Time()) {
 				entry.LobbyStatus = LobbyStatusClosed // Time's up
-			} else if exam.ScheduledStart != nil && exam.ScheduledStart.After(now) {
+			} else if exam.ScheduledStart != nil && exam.ScheduledStart.Time().After(now) {
 				// Only show upcoming if it's scheduled for today
-				y1, m1, d1 := exam.ScheduledStart.Date()
+				y1, m1, d1 := exam.ScheduledStart.Time().Date()
 				y2, m2, d2 := now.Date()
 				if y1 == y2 && m1 == m2 && d1 == d2 {
 					entry.LobbyStatus = LobbyStatusUpcoming
@@ -187,10 +187,10 @@ func (s *ExamSessionService) JoinExam(ctx context.Context, examID uuid.UUID, stu
 	}
 
 	now := time.Now()
-	if exam.ScheduledStart != nil && now.Before(*exam.ScheduledStart) {
+	if exam.ScheduledStart != nil && now.Before(exam.ScheduledStart.Time()) {
 		return nil, errors.New("exam is not available for joining")
 	}
-	if exam.ScheduledEnd != nil && now.After(*exam.ScheduledEnd) {
+	if exam.ScheduledEnd != nil && now.After(exam.ScheduledEnd.Time()) {
 		return nil, errors.New("exam is not available for joining")
 	}
 

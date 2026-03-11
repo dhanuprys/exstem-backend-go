@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,10 +52,10 @@ func (r *DashboardRepository) GetExamStatusCounts(ctx context.Context) (map[mode
 
 // DashboardUpcomingExam represents minimal data for upcoming scheduled exams.
 type DashboardUpcomingExam struct {
-	ID             uuid.UUID  `json:"id"`
-	Title          string     `json:"title"`
-	ScheduledStart *time.Time `json:"scheduled_start"`
-	Duration       int        `json:"duration_minutes"`
+	ID             uuid.UUID        `json:"id"`
+	Title          string           `json:"title"`
+	ScheduledStart *model.LocalTime `json:"scheduled_start"`
+	Duration       int              `json:"duration_minutes"`
 }
 
 // GetUpcomingExams retrieves the next N scheduled exams that are PUBLISHED.
@@ -89,11 +88,11 @@ func (r *DashboardRepository) GetUpcomingExams(ctx context.Context, limit int) (
 
 // DashboardRecentExamResult represents minimal data for recently completed exams, averaging session results.
 type DashboardRecentExamResult struct {
-	ID               uuid.UUID  `json:"id"`
-	Title            string     `json:"title"`
-	EndDateTime      *time.Time `json:"end_date_time"` // scheduled_end or created_at fallback
-	ParticipantCount int        `json:"participant_count"`
-	AverageScore     *float64   `json:"average_score"`
+	ID               uuid.UUID        `json:"id"`
+	Title            string           `json:"title"`
+	EndDateTime      *model.LocalTime `json:"end_date_time"` // scheduled_end or created_at fallback
+	ParticipantCount int              `json:"participant_count"`
+	AverageScore     *float64         `json:"average_score"`
 }
 
 // GetRecentExamResults retrieves the last N completed or archived exams with session completion stats.
@@ -102,7 +101,7 @@ func (r *DashboardRepository) GetRecentExamResults(ctx context.Context, limit in
 		SELECT 
 			e.id, 
 			e.title, 
-			COALESCE(e.scheduled_end, e.updated_at) as end_time,
+			COALESCE(e.scheduled_end, e.updated_at::timestamp) as end_time,
 			COUNT(s.id) as participant_count,
 			AVG(s.final_score) as average_score
 		FROM exams e

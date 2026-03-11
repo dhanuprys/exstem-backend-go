@@ -1,6 +1,7 @@
 -- Create admins table
 CREATE TABLE IF NOT EXISTS admins (
     id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL DEFAULT '',
     password_hash VARCHAR(255) NOT NULL,

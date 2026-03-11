@@ -163,7 +163,7 @@ func (h *AuthHandler) AdminLogin(c *gin.Context) {
 		return
 	}
 
-	admin, err := h.adminService.GetByEmail(c.Request.Context(), req.Email)
+	admin, err := h.adminService.GetByIdentifier(c.Request.Context(), req.Identifier)
 	if err != nil {
 		response.Fail(c, http.StatusUnauthorized, response.ErrInvalidCredentials)
 		return

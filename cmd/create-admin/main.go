@@ -54,6 +54,15 @@ func main() {
 		return
 	}
 
+	// Username
+	fmt.Print("Enter Username: ")
+	username, _ := reader.ReadString('\n')
+	username = strings.TrimSpace(username)
+	if username == "" {
+		fmt.Println("Error: Username is required")
+		return
+	}
+
 	// Email
 	fmt.Print("Enter Email: ")
 	email, _ := reader.ReadString('\n')
@@ -71,6 +80,10 @@ func main() {
 		return
 	}
 	password := string(bytePassword)
+	// IMPORTANT: WSL terminals frequently capture the \r trailing carriage return.
+	// We must strip it out, otherwise it embeds directly into the hash and breaks frontend comparisons!
+	password = strings.TrimRight(password, "\r")
+
 	fmt.Println() // Newline after password input
 	if len(password) < 6 {
 		fmt.Println("Error: Password must be at least 6 characters")
@@ -100,6 +113,7 @@ func main() {
 	}
 
 	newAdmin := &model.Admin{
+		Username:     username,
 		Email:        email,
 		Name:         name,
 		PasswordHash: string(hashedPassword),
