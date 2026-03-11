@@ -7,10 +7,10 @@ import (
 	"image/jpeg"
 	_ "image/png" // register PNG decoder
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/signintech/gopdf"
+	"github.com/stemsi/exstem-backend/internal/assets/fonts"
 	"github.com/stemsi/exstem-backend/internal/model"
 )
 
@@ -56,9 +56,6 @@ const (
 	fontRegular = "roboto"
 	fontBold    = "roboto-bold"
 )
-
-// Font directory relative to the working directory (project root).
-const pdfFontsDir = "internal/assets/fonts"
 
 // Header text styling (font sizes in PDF points).
 const (
@@ -154,12 +151,16 @@ func GenerateStudentCardsPDF(cards []model.StudentCardInfo, school SchoolInfo) (
 	pdf := &gopdf.GoPdf{}
 	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
 
-	// Register fonts.
+	// Register embedded fonts.
 	for name, file := range map[string]string{
 		fontRegular: "Roboto-Regular.ttf",
 		fontBold:    "Roboto-Bold.ttf",
 	} {
-		if err := pdf.AddTTFFont(name, filepath.Join(pdfFontsDir, file)); err != nil {
+		fontBytes, err := fonts.FS.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("read embedded font %s: %w", file, err)
+		}
+		if err := pdf.AddTTFFontData(name, fontBytes); err != nil {
 			return nil, fmt.Errorf("load font %s: %w", name, err)
 		}
 	}
