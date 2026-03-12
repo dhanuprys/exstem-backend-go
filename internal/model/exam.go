@@ -22,11 +22,11 @@ func (lt *LocalTime) UnmarshalJSON(b []byte) error {
 	if s == "null" || s == "" {
 		return nil
 	}
-	// Try parsing standard seconds first
-	t, err := time.Parse(TimeLayout, s)
+	// Try parsing standard seconds first within local physical location
+	t, err := time.ParseInLocation(TimeLayout, s, time.Local)
 	if err != nil {
 		// Try parsing without seconds conditionally matching frontend outputs
-		t, err = time.Parse(TimeLayoutShort, s)
+		t, err = time.ParseInLocation(TimeLayoutShort, s, time.Local)
 		if err != nil {
 			return fmt.Errorf("invalid LocalTime format: %s", s)
 		}
@@ -67,7 +67,10 @@ func (lt *LocalTime) Scan(value interface{}) error {
 	}
 	switch v := value.(type) {
 	case time.Time:
-		*lt = LocalTime(v)
+		// PGX captures TIMESTAMP WITHOUT TIMEZONE physically inside +0000 UTC locations.
+		// We securely discard this default metadata wrapping the digits onto the actual Local machine timezone footprint natively bypassing offset jumps.
+		localT := time.Date(v.Year(), v.Month(), v.Day(), v.Hour(), v.Minute(), v.Second(), v.Nanosecond(), time.Local)
+		*lt = LocalTime(localT)
 		return nil
 	default:
 		return fmt.Errorf("cannot scan type %T into LocalTime", value)
