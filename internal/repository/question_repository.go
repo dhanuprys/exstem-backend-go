@@ -30,10 +30,11 @@ func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, 
 	}
 
 	// 2. Get paginated data
-	query := `SELECT id, author_id, subject_id, name, description
-		 FROM question_banks
-		 WHERE name ILIKE $1 OR description ILIKE $1
-		 ORDER BY id DESC LIMIT $2 OFFSET $3`
+	query := `SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name
+		 FROM question_banks q
+		 LEFT JOIN subjects s ON q.subject_id = s.id
+		 WHERE q.name ILIKE $1 OR q.description ILIKE $1
+		 ORDER BY q.id DESC LIMIT $2 OFFSET $3`
 
 	rows, err := r.pool.Query(ctx, query, searchParam, limit, offset)
 	if err != nil {
@@ -44,7 +45,7 @@ func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, 
 	var qbanks []model.QuestionBank
 	for rows.Next() {
 		var q model.QuestionBank
-		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description); err != nil {
+		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName); err != nil {
 			return nil, 0, err
 		}
 		qbanks = append(qbanks, q)
@@ -66,10 +67,11 @@ func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, l
 	}
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, author_id, subject_id, name, description
-		 FROM question_banks
-		 WHERE author_id = $1 AND (name ILIKE $2 OR description ILIKE $2)
-		 ORDER BY id DESC LIMIT $3 OFFSET $4`,
+		`SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name
+		 FROM question_banks q
+		 LEFT JOIN subjects s ON q.subject_id = s.id
+		 WHERE q.author_id = $1 AND (q.name ILIKE $2 OR q.description ILIKE $2)
+		 ORDER BY q.id DESC LIMIT $3 OFFSET $4`,
 		authorID, searchParam, limit, offset,
 	)
 	if err != nil {
@@ -80,7 +82,7 @@ func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, l
 	var qbanks []model.QuestionBank
 	for rows.Next() {
 		var q model.QuestionBank
-		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description); err != nil {
+		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName); err != nil {
 			return nil, 0, err
 		}
 		qbanks = append(qbanks, q)
@@ -91,11 +93,13 @@ func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, l
 // GetQBanks retrieves a specific question bank.
 func (r *QuestionRepository) GetQBanks(ctx context.Context, qbankID uuid.UUID) (*model.QuestionBank, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, author_id, subject_id, name, description
-		 FROM question_banks WHERE id = $1`, qbankID,
+		`SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name
+		 FROM question_banks q
+		 LEFT JOIN subjects s ON q.subject_id = s.id
+		 WHERE q.id = $1`, qbankID,
 	)
 	var q model.QuestionBank
-	if err := row.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description); err != nil {
+	if err := row.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName); err != nil {
 		return nil, err
 	}
 	return &q, nil
