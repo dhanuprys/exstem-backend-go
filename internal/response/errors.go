@@ -33,7 +33,6 @@ const (
 	ErrExamNotAvailable  ErrCode = "EXAM_NOT_AVAILABLE"
 	ErrInvalidEntryToken ErrCode = "INVALID_ENTRY_TOKEN"
 	ErrExamNotPublished  ErrCode = "EXAM_NOT_PUBLISHED"
-	ErrNotExamAuthor     ErrCode = "NOT_EXAM_AUTHOR"
 	ErrNoQuestions       ErrCode = "NO_QUESTIONS"
 	ErrExamNotDraft      ErrCode = "EXAM_NOT_DRAFT"
 	ErrDuplicateTarget   ErrCode = "DUPLICATE_TARGET_RULE"
@@ -102,8 +101,6 @@ func GetMessage(code ErrCode) string {
 		return "Token masuk ujian tidak valid."
 	case ErrExamNotPublished:
 		return "Ujian ini belum dipublikasikan."
-	case ErrNotExamAuthor:
-		return "Anda bukan pembuat ujian ini."
 	case ErrNoQuestions:
 		return "Ujian ini tidak memiliki pertanyaan."
 	case ErrExamNotDraft:

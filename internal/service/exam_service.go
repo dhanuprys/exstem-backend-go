@@ -17,7 +17,6 @@ import (
 
 // Domain Errors
 var (
-	ErrNotExamAuthor    = errors.New("not the author of this exam")
 	ErrNoQuestions      = errors.New("no questions found for this exam")
 	ErrExamNotDraft     = errors.New("exam is not in draft status")
 	ErrDuplicateTarget  = errors.New("duplicate target rule")
@@ -320,13 +319,10 @@ func (s *ExamService) GetTargetRules(ctx context.Context, examID uuid.UUID) ([]m
 }
 
 // Update modifies an existing draft exam.
-func (s *ExamService) Update(ctx context.Context, authorID int, exam *model.Exam) error {
-	existing, err := s.examRepo.GetByID(ctx, exam.ID)
+func (s *ExamService) Update(ctx context.Context, exam *model.Exam) error {
+	_, err := s.examRepo.GetByID(ctx, exam.ID)
 	if err != nil {
 		return err
-	}
-	if authorID != 0 && existing.AuthorID != authorID {
-		return ErrNotExamAuthor
 	}
 	// Always allow change
 	// if existing.Status != model.ExamStatusDraft {
@@ -344,13 +340,10 @@ func (s *ExamService) Update(ctx context.Context, authorID int, exam *model.Exam
 }
 
 // Delete removes a draft exam.
-func (s *ExamService) Delete(ctx context.Context, id uuid.UUID, authorID int) error {
+func (s *ExamService) Delete(ctx context.Context, id uuid.UUID) error {
 	existing, err := s.examRepo.GetByID(ctx, id)
 	if err != nil {
 		return err
-	}
-	if authorID != 0 && existing.AuthorID != authorID {
-		return ErrNotExamAuthor
 	}
 	if existing.Status != model.ExamStatusDraft {
 		return ErrExamNotDraft

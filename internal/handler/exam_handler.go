@@ -117,8 +117,6 @@ func (h *ExamHandler) PublishExam(c *gin.Context) {
 
 	if err := h.examService.Publish(c.Request.Context(), examID); err != nil {
 		switch {
-		case errors.Is(err, service.ErrNotExamAuthor):
-			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
 		case errors.Is(err, service.ErrNoQuestions):
 			response.Fail(c, http.StatusBadRequest, response.ErrNoQuestions)
 		case errors.Is(err, service.ErrExamNotDraft):
@@ -287,8 +285,6 @@ func (h *ExamHandler) RefreshExamCache(c *gin.Context) {
 
 	if err := h.examService.RefreshCache(c.Request.Context(), examID); err != nil {
 		switch {
-		case errors.Is(err, service.ErrNotExamAuthor):
-			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
 		case errors.Is(err, service.ErrExamNotPublished):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotPublished)
 		case errors.Is(err, service.ErrNoQuestions):
@@ -445,18 +441,8 @@ func (h *ExamHandler) UpdateExam(c *gin.Context) {
 		existing.QBankID = req.QBankID
 	}
 
-	authorFilter := claims.UserID
-	for _, p := range claims.Permissions {
-		if p == "exams:write_all" {
-			authorFilter = 0
-			break
-		}
-	}
-
-	if err := h.examService.Update(c.Request.Context(), authorFilter, existing); err != nil {
+	if err := h.examService.Update(c.Request.Context(), existing); err != nil {
 		switch {
-		case errors.Is(err, service.ErrNotExamAuthor):
-			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
 		case errors.Is(err, service.ErrExamNotDraft):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotDraft)
 		default:
@@ -484,18 +470,8 @@ func (h *ExamHandler) DeleteExam(c *gin.Context) {
 		return
 	}
 
-	authorFilter := claims.UserID
-	for _, p := range claims.Permissions {
-		if p == "exams:write_all" {
-			authorFilter = 0
-			break
-		}
-	}
-
-	if err := h.examService.Delete(c.Request.Context(), id, authorFilter); err != nil {
+	if err := h.examService.Delete(c.Request.Context(), id); err != nil {
 		switch {
-		case errors.Is(err, service.ErrNotExamAuthor):
-			response.Fail(c, http.StatusForbidden, response.ErrNotExamAuthor)
 		case errors.Is(err, service.ErrExamNotDraft):
 			response.Fail(c, http.StatusBadRequest, response.ErrExamNotDraft)
 		default:
