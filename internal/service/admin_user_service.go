@@ -44,7 +44,7 @@ func (s *AdminUserService) ListAdmins(ctx context.Context, roleID, page, perPage
 
 	// Select query
 	query := `
-		SELECT a.id, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name as role_name
+		SELECT a.id, a.username, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name as role_name
 		FROM admins a
 		JOIN roles r ON a.role_id = r.id
 		WHERE 1=1
@@ -64,7 +64,7 @@ func (s *AdminUserService) ListAdmins(ctx context.Context, roleID, page, perPage
 
 	// Re-building args correctly
 	query = `
-		SELECT a.id, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name as role_name
+		SELECT a.id, a.username, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name as role_name
 		FROM admins a
 		JOIN roles r ON a.role_id = r.id
 		WHERE 1=1
@@ -90,7 +90,7 @@ func (s *AdminUserService) ListAdmins(ctx context.Context, roleID, page, perPage
 	for rows.Next() {
 		var a model.Admin
 		err := rows.Scan(
-			&a.ID, &a.Email, &a.Name, &a.RoleID, &a.CreatedAt, &a.UpdatedAt, &a.RoleName,
+			&a.ID, &a.Username, &a.Email, &a.Name, &a.RoleID, &a.CreatedAt, &a.UpdatedAt, &a.RoleName,
 		)
 		if err != nil {
 			return nil, 0, err
@@ -102,15 +102,15 @@ func (s *AdminUserService) ListAdmins(ctx context.Context, roleID, page, perPage
 }
 
 // CreateAdmin creates a new admin user.
-func (s *AdminUserService) CreateAdmin(ctx context.Context, email, name, password string, roleID int) (*model.Admin, error) {
-	// Check if email exists
+func (s *AdminUserService) CreateAdmin(ctx context.Context, username, email, name, password string, roleID int) (*model.Admin, error) {
+	// Check if email or username exists
 	var exists bool
-	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admins WHERE email = $1)", email).Scan(&exists)
+	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admins WHERE email = $1 OR username = $2)", email, username).Scan(&exists)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
-		return nil, errors.New("email already registered")
+		return nil, errors.New("email or username already registered")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -122,8 +122,8 @@ func (s *AdminUserService) CreateAdmin(ctx context.Context, email, name, passwor
 	var createdAt, updatedAt time.Time
 
 	err = s.pool.QueryRow(ctx,
-		"INSERT INTO admins (email, name, password_hash, role_id) VALUES ($1, $2, $3, $4) RETURNING id, created_at, updated_at",
-		email, name, string(hashedPassword), roleID,
+		"INSERT INTO admins (username, email, name, password_hash, role_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, updated_at",
+		username, email, name, string(hashedPassword), roleID,
 	).Scan(&id, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
@@ -132,11 +132,11 @@ func (s *AdminUserService) CreateAdmin(ctx context.Context, email, name, passwor
 	// Fetch created admin with role name
 	var admin model.Admin
 	err = s.pool.QueryRow(ctx, `
-		SELECT a.id, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name
+		SELECT a.id, a.username, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name
 		FROM admins a
 		JOIN roles r ON a.role_id = r.id
 		WHERE a.id = $1
-	`, id).Scan(&admin.ID, &admin.Email, &admin.Name, &admin.RoleID, &admin.CreatedAt, &admin.UpdatedAt, &admin.RoleName)
+	`, id).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.Name, &admin.RoleID, &admin.CreatedAt, &admin.UpdatedAt, &admin.RoleName)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (s *AdminUserService) CreateAdmin(ctx context.Context, email, name, passwor
 }
 
 // UpdateAdmin updates an existing admin user.
-func (s *AdminUserService) UpdateAdmin(ctx context.Context, id int, email, name, password string, roleID int) (*model.Admin, error) {
+func (s *AdminUserService) UpdateAdmin(ctx context.Context, id int, username, email, name, password string, roleID int) (*model.Admin, error) {
 	// Check if admin exists
 	var exists bool
 	err := s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admins WHERE id = $1)", id).Scan(&exists)
@@ -158,12 +158,12 @@ func (s *AdminUserService) UpdateAdmin(ctx context.Context, id int, email, name,
 
 	// Check email uniqueness if changed
 	var emailExists bool
-	err = s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admins WHERE email = $1 AND id != $2)", email, id).Scan(&emailExists)
+	err = s.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admins WHERE (email = $1 OR username = $2) AND id != $3)", email, username, id).Scan(&emailExists)
 	if err != nil {
 		return nil, err
 	}
 	if emailExists {
-		return nil, errors.New("email already registered")
+		return nil, errors.New("email or username already registered")
 	}
 
 	var errUpdate error
@@ -173,13 +173,13 @@ func (s *AdminUserService) UpdateAdmin(ctx context.Context, id int, email, name,
 			return nil, err
 		}
 		_, errUpdate = s.pool.Exec(ctx,
-			"UPDATE admins SET email = $1, name = $2, password_hash = $3, role_id = $4, updated_at = NOW() WHERE id = $5",
-			email, name, string(hashedPassword), roleID, id,
+			"UPDATE admins SET username = $1, email = $2, name = $3, password_hash = $4, role_id = $5, updated_at = NOW() WHERE id = $6",
+			username, email, name, string(hashedPassword), roleID, id,
 		)
 	} else {
 		_, errUpdate = s.pool.Exec(ctx,
-			"UPDATE admins SET email = $1, name = $2, role_id = $3, updated_at = NOW() WHERE id = $4",
-			email, name, roleID, id,
+			"UPDATE admins SET username = $1, email = $2, name = $3, role_id = $4, updated_at = NOW() WHERE id = $5",
+			username, email, name, roleID, id,
 		)
 	}
 	if errUpdate != nil {
@@ -189,11 +189,11 @@ func (s *AdminUserService) UpdateAdmin(ctx context.Context, id int, email, name,
 	// Return updated admin
 	var admin model.Admin
 	err = s.pool.QueryRow(ctx, `
-		SELECT a.id, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name
+		SELECT a.id, a.username, a.email, a.name, a.role_id, a.created_at, a.updated_at, r.name
 		FROM admins a
 		JOIN roles r ON a.role_id = r.id
 		WHERE a.id = $1
-	`, id).Scan(&admin.ID, &admin.Email, &admin.Name, &admin.RoleID, &admin.CreatedAt, &admin.UpdatedAt, &admin.RoleName)
+	`, id).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.Name, &admin.RoleID, &admin.CreatedAt, &admin.UpdatedAt, &admin.RoleName)
 	if err != nil {
 		return nil, err
 	}

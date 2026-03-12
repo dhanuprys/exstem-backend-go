@@ -42,6 +42,7 @@ func (h *AdminUserHandler) ListAdmins(c *gin.Context) {
 
 // CreateAdminRequest payload
 type CreateAdminRequest struct {
+	Username string `json:"username"`
 	Email    string `json:"email" binding:"required,email"`
 	Name     string `json:"name" binding:"required,min=3"`
 	Password string `json:"password" binding:"required,min=6"`
@@ -56,7 +57,11 @@ func (h *AdminUserHandler) CreateAdmin(c *gin.Context) {
 		return
 	}
 
-	admin, err := h.service.CreateAdmin(c.Request.Context(), req.Email, req.Name, req.Password, req.RoleID)
+	if req.Username == "" {
+		req.Username = strings.Split(req.Email, "@")[0]
+	}
+
+	admin, err := h.service.CreateAdmin(c.Request.Context(), req.Username, req.Email, req.Name, req.Password, req.RoleID)
 	if err != nil {
 		if err.Error() == "email already registered" {
 			response.Fail(c, http.StatusConflict, "EMAIL_EXISTS")
@@ -71,6 +76,7 @@ func (h *AdminUserHandler) CreateAdmin(c *gin.Context) {
 
 // UpdateAdminRequest payload
 type UpdateAdminRequest struct {
+	Username string `json:"username"`
 	Email    string `json:"email" binding:"required,email"`
 	Name     string `json:"name" binding:"required,min=3"`
 	Password string `json:"password"` // Optional: only update if provided
@@ -91,7 +97,11 @@ func (h *AdminUserHandler) UpdateAdmin(c *gin.Context) {
 		return
 	}
 
-	admin, err := h.service.UpdateAdmin(c.Request.Context(), id, req.Email, req.Name, req.Password, req.RoleID)
+	if req.Username == "" {
+		req.Username = strings.Split(req.Email, "@")[0]
+	}
+
+	admin, err := h.service.UpdateAdmin(c.Request.Context(), id, req.Username, req.Email, req.Name, req.Password, req.RoleID)
 	if err != nil {
 		if err.Error() == "admin not found" {
 			response.Fail(c, http.StatusNotFound, "NOT_FOUND")
