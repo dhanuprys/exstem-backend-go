@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -45,6 +46,32 @@ func (lt LocalTime) MarshalJSON() ([]byte, error) {
 // Time returns the underlying time.Time element directly.
 func (lt LocalTime) Time() time.Time {
 	return time.Time(lt)
+}
+
+// Value implements the driver.Valuer interface allowing pgx compatibility safely capturing nil pointers natively.
+func (lt *LocalTime) Value() (driver.Value, error) {
+	if lt == nil {
+		return nil, nil
+	}
+	t := time.Time(*lt)
+	if t.IsZero() {
+		return nil, nil
+	}
+	return t, nil
+}
+
+// Scan implements the sql.Scanner interface decoding native Postgres times into the aliased type.
+func (lt *LocalTime) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	switch v := value.(type) {
+	case time.Time:
+		*lt = LocalTime(v)
+		return nil
+	default:
+		return fmt.Errorf("cannot scan type %T into LocalTime", value)
+	}
 }
 
 // ExamStatus enumerates the possible states of an exam.
