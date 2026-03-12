@@ -122,6 +122,15 @@ func (s *SyncService) SyncStudents(ctx context.Context) (int, error) {
 		}
 
 		gradeLevel := strings.TrimSpace(data.Kelas)
+		switch gradeLevel {
+		case "10":
+			gradeLevel = "X"
+		case "11":
+			gradeLevel = "XI"
+		case "12":
+			gradeLevel = "XII"
+		}
+
 		majorCode := strings.TrimSpace(data.Jurusan)
 		if gradeLevel == "" || majorCode == "" {
 			s.log.Warn().Str("nis", nis).Msg("Skipping student with empty grade or major")
@@ -169,7 +178,7 @@ func (s *SyncService) SyncStudents(ctx context.Context) (int, error) {
 		err = tx.QueryRow(ctx, `
 			SELECT id FROM classes WHERE grade_level = $1 AND major_code = $2 AND group_number = $3
 		`, gradeLevel, majorCode, groupNumber).Scan(&classID)
-		
+
 		if err != nil {
 			if err == pgx.ErrNoRows {
 				// Create Class
@@ -262,7 +271,7 @@ func (s *SyncService) SyncTeachers(ctx context.Context) (int, error) {
 	var guruRoleID int
 	err = s.pool.QueryRow(ctx, "SELECT id FROM roles WHERE name = 'Teacher'").Scan(&guruRoleID)
 	if err != nil {
-		guruRoleID = 2 
+		guruRoleID = 2
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -275,7 +284,7 @@ func (s *SyncService) SyncTeachers(ctx context.Context) (int, error) {
 	for _, data := range apiResp.Data {
 		name := strings.TrimSpace(data.Nama)
 		nip := strings.TrimSpace(data.Nip)
-		
+
 		username := nip
 		if username == "" {
 			slug := strings.ToLower(strings.ReplaceAll(name, " ", "."))
@@ -284,7 +293,7 @@ func (s *SyncService) SyncTeachers(ctx context.Context) (int, error) {
 			}
 			username = slug
 		}
-		
+
 		if username == "" {
 			continue // Skip if ultimately unidentifiable
 		}
@@ -325,7 +334,7 @@ func (s *SyncService) SyncTeachers(ctx context.Context) (int, error) {
 			s.log.Error().Err(err).Str("username", username).Msg("Failed to upsert teacher")
 			continue
 		}
-		
+
 		tx.Exec(ctx, "RELEASE SAVEPOINT sync_teacher")
 		syncedCount++
 	}
