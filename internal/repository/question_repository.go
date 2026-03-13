@@ -19,7 +19,7 @@ func NewQuestionRepository(pool *pgxpool.Pool) *QuestionRepository {
 }
 
 // ListQBanks retrieves question banks with pagination and search.
-func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, search string) ([]model.QuestionBank, int, error) {
+func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, search string, includeCounts bool) ([]model.QuestionBank, int, error) {
 	// 1. Get total count
 	countQuery := `SELECT COUNT(*) FROM question_banks WHERE name ILIKE $1 OR description ILIKE $1`
 	searchParam := "%" + search + "%"
@@ -30,7 +30,12 @@ func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, 
 	}
 
 	// 2. Get paginated data
-	query := `SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name
+	selectClause := `SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name`
+	if includeCounts {
+		selectClause += `, (SELECT COUNT(*) FROM questions WHERE qbank_id = q.id) as question_count`
+	}
+	
+	query := selectClause + `
 		 FROM question_banks q
 		 LEFT JOIN subjects s ON q.subject_id = s.id
 		 WHERE q.name ILIKE $1 OR q.description ILIKE $1
@@ -45,8 +50,14 @@ func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, 
 	var qbanks []model.QuestionBank
 	for rows.Next() {
 		var q model.QuestionBank
-		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName); err != nil {
-			return nil, 0, err
+		var scanErr error
+		if includeCounts {
+			scanErr = rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName, &q.QuestionCount)
+		} else {
+			scanErr = rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName)
+		}
+		if scanErr != nil {
+			return nil, 0, scanErr
 		}
 		qbanks = append(qbanks, q)
 	}
@@ -54,7 +65,7 @@ func (r *QuestionRepository) ListQBanks(ctx context.Context, limit, offset int, 
 }
 
 // ListQBanksByAuthor retrieves question banks filtered by author with pagination and search.
-func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, limit, offset int, search string) ([]model.QuestionBank, int, error) {
+func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, limit, offset int, search string, includeCounts bool) ([]model.QuestionBank, int, error) {
 	searchParam := "%" + search + "%"
 
 	var total int
@@ -66,14 +77,18 @@ func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, l
 		return nil, 0, err
 	}
 
-	rows, err := r.pool.Query(ctx,
-		`SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name
+	selectClause := `SELECT q.id, q.author_id, q.subject_id, q.name, q.description, s.name as subject_name`
+	if includeCounts {
+		selectClause += `, (SELECT COUNT(*) FROM questions WHERE qbank_id = q.id) as question_count`
+	}
+
+	query := selectClause + `
 		 FROM question_banks q
 		 LEFT JOIN subjects s ON q.subject_id = s.id
 		 WHERE q.author_id = $1 AND (q.name ILIKE $2 OR q.description ILIKE $2)
-		 ORDER BY q.id DESC LIMIT $3 OFFSET $4`,
-		authorID, searchParam, limit, offset,
-	)
+		 ORDER BY q.id DESC LIMIT $3 OFFSET $4`
+
+	rows, err := r.pool.Query(ctx, query, authorID, searchParam, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -82,8 +97,14 @@ func (r *QuestionRepository) ListQBanksByAuthor(ctx context.Context, authorID, l
 	var qbanks []model.QuestionBank
 	for rows.Next() {
 		var q model.QuestionBank
-		if err := rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName); err != nil {
-			return nil, 0, err
+		var scanErr error
+		if includeCounts {
+			scanErr = rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName, &q.QuestionCount)
+		} else {
+			scanErr = rows.Scan(&q.ID, &q.AuthorID, &q.SubjectID, &q.Name, &q.Description, &q.SubjectName)
+		}
+		if scanErr != nil {
+			return nil, 0, scanErr
 		}
 		qbanks = append(qbanks, q)
 	}

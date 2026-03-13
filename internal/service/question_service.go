@@ -21,7 +21,7 @@ func NewQuestionService(questionRepo *repository.QuestionRepository) *QuestionSe
 
 // ListQBanks retrieves question banks with pagination.
 // If authorID is non-nil, only banks owned by that author are returned.
-func (s *QuestionService) ListQBanks(ctx context.Context, authorID *int, page, perPage int, search string) ([]model.QuestionBank, *response.Pagination, error) {
+func (s *QuestionService) ListQBanks(ctx context.Context, authorID *int, page, perPage int, search string, includeCounts bool) ([]model.QuestionBank, *response.Pagination, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -40,9 +40,9 @@ func (s *QuestionService) ListQBanks(ctx context.Context, authorID *int, page, p
 	var err error
 
 	if authorID != nil {
-		qbanks, total, err = s.questionRepo.ListQBanksByAuthor(ctx, *authorID, limit, offset, search)
+		qbanks, total, err = s.questionRepo.ListQBanksByAuthor(ctx, *authorID, limit, offset, search, includeCounts)
 	} else {
-		qbanks, total, err = s.questionRepo.ListQBanks(ctx, limit, offset, search)
+		qbanks, total, err = s.questionRepo.ListQBanks(ctx, limit, offset, search, includeCounts)
 	}
 	if err != nil {
 		return nil, nil, err

@@ -36,6 +36,7 @@ func (h *QuestionHandler) ListQBanks(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
 	search := c.Query("search")
+	includeCounts := c.Query("include_counts") == "true"
 
 	// Determine scope: write_all sees everything, everyone else sees only their own.
 	var authorID *int
@@ -50,7 +51,7 @@ func (h *QuestionHandler) ListQBanks(c *gin.Context) {
 		authorID = &claims.UserID
 	}
 
-	qbanks, pagination, err := h.questionService.ListQBanks(c.Request.Context(), authorID, page, perPage, search)
+	qbanks, pagination, err := h.questionService.ListQBanks(c.Request.Context(), authorID, page, perPage, search, includeCounts)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, response.ErrInternal)
 		return
